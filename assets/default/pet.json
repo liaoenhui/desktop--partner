@@ -1,0 +1,43 @@
+{
+  "name": "银狼 LV.999 · 动作版",
+  "image": "pet.png",
+  "fps": 8,
+  "actionLines": {
+    "yawn": ["好无聊啊，要陪我来一局吗？", "哈啊……这加载也太慢了。找点游戏玩？", "别误会，我没困。只是这关没什么挑战。"],
+    "stretch": ["休息一下。手速再快，也得给手腕放个假。", "坐这么久了，还不起来活动一下？", "伸个懒腰。下一局，我可不会放水。"],
+    "game": ["等一下，这局马上就赢了。", "这个纪录？顺手就破了。", "要组队就快点，我给你留了个位置。", "别挡屏幕。关键操作来了。"],
+    "rhythm": ["跟上节拍。满连对我来说可是基本操作。", "这首有点意思。再来一遍，刷个新纪录。", "看好了，接下来是无伤通关。"],
+    "headpat": ["摸头可不会给你加分。……这次就算了。", "有事直说，别干扰满级玩家。"],
+    "annoyed": ["喂，你这是把我当连点器测试了？", "再戳，就把你移出队伍。开玩笑的。"],
+    "drag": ["喂——我还没存档呢！", "传送就传送，别晃来晃去的。"]
+  },
+  "reminders": [
+    { "id": "morning", "time": "09:00", "action": "stretch", "lines": ["上线了？先把今天的任务清单打开吧。"] },
+    { "id": "lunch", "time": "12:00", "action": "stretch", "lines": ["午饭时间。先补充体力，任务又不会跑。"] },
+    { "id": "afternoon", "time": "15:00", "action": "stretch", "lines": ["盯屏幕这么久，起来喝口水。回来再继续攻略。"] },
+    { "id": "offwork", "time": "18:00", "action": "headpat", "lines": ["喂，到点下班了。今天的进度先存个档。"] },
+    { "id": "evening", "time": "22:00", "action": "yawn", "lines": ["十点了。手头的任务收个尾，别又拖到半夜。"] },
+    { "id": "midnight", "time": "00:00", "action": "yawn", "lines": ["还不睡，准备和我通宵打游戏吗？……算了，先存档，明天再来。"] }
+  ],
+  "clickLines": ["这局，带你通关。", "又戳我？手速不错嘛。", "隐藏成就：发现一只银狼。", "等一下，让我先存个档。"],
+  "idleLines": ["挂机中……有事戳我。", "今日任务：陪你打通这一关。", "这个桌面，我接管啦。"],
+  "baseAtlas": "reactions",
+  "baseFrame": 0,
+  "atlases": {
+    "reactions": { "file": "reactions.png", "columns": 3, "rows": 2 },
+    "rest": { "file": "rest.png", "columns": 3, "rows": 2 },
+    "gamer": { "file": "gamer.png", "columns": 3, "rows": 2 }
+  },
+  "clips": {
+    "blink": { "atlas": "reactions", "frames": [1,0], "milliseconds": [110,80], "loop": false },
+    "click": { "atlas": "reactions", "frames": [2,2,0], "milliseconds": [200,650,180], "loop": false },
+    "headpat": { "atlas": "reactions", "frames": [2,2,0], "milliseconds": [300,850,180], "loop": false },
+    "annoyed": { "atlas": "reactions", "frames": [3,3,0], "milliseconds": [250,1250,200], "loop": false },
+    "drag": { "atlas": "reactions", "frames": [4,5], "milliseconds": [350,850], "loop": false },
+    "land": { "atlas": "reactions", "frames": [3,0], "milliseconds": [300,250], "loop": false },
+    "yawn": { "atlas": "rest", "frames": [0,1,2,2,3,0,5], "milliseconds": [300,350,900,700,550,250,400], "loop": false },
+    "stretch": { "atlas": "rest", "frames": [0,4,4,5], "milliseconds": [300,900,750,500], "loop": false },
+    "game": { "atlas": "gamer", "frames": [1,2,1,2,1,2,3], "milliseconds": [600,800,600,800,600,800,850], "loop": false },
+    "rhythm": { "atlas": "gamer", "frames": [0,4,5,4,5,4,5,4,5,4,5,0], "milliseconds": [550,350,350,350,350,350,350,350,350,350,350,420], "loop": false }
+  }
+}

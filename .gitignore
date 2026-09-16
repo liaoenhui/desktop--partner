@@ -1,0 +1,25 @@
+# Local builds, previews, archives and runtime state
+/dist/
+/backups/
+/output/
+/tools/*.exe
+/tools/*.pdb
+/bin/
+/obj/
+/.vs/
+/.codex/
+/.agents/
+*.user
+*.suo
+*.log
+test-error.txt
+settings.json
+auth.json
+.env
+.env.*
+*.key
+*.pem
+*.pfx
+
+# Keep generated portable releases out of source history by default.
+/transfer/
