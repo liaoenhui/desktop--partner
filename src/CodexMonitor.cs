@@ -10,6 +10,7 @@ using System.Web.Script.Serialization;
 namespace SilverWolfPet {
 public sealed class QuotaReading { public string Bucket;public int Minutes;public double Remaining;public DateTime ResetUtc; }
 public sealed class CodexMonitor : IDisposable {
+    sealed class PendingCompletion { public string Id;public DateTime ReadyUtc;public DateTime EventUtc;public bool Notify; }
     public volatile bool UsageEnabled=true, TasksEnabled=true;
     public Action<string,string> Notice;
     public Action<string> Status;
@@ -22,6 +23,7 @@ public sealed class CodexMonitor : IDisposable {
     readonly Dictionary<string,long> offsets=new Dictionary<string,long>();
     readonly HashSet<string> completed=new HashSet<string>();
     readonly Dictionary<string,string> active=new Dictionary<string,string>();
+    readonly Dictionary<string,PendingCompletion> pendingCompletions=new Dictionary<string,PendingCompletion>();
     readonly Dictionary<string,List<byte>> pending=new Dictionary<string,List<byte>>();
     readonly DateTime started=DateTime.UtcNow;
     Process server;
@@ -84,6 +86,7 @@ public sealed class CodexMonitor : IDisposable {
         var buckets=Obj(Get(result,"rateLimitsByLimitId"));
         if(buckets==null||buckets.Count==0)buckets=new Dictionary<string,object>{{"codex",Get(result,"rateLimits")}};
         var summaries=new List<string>();var alerts=new List<string>();var readings=new List<QuotaReading>();
+        var alertWindows=new Dictionary<string,QuotaReading>();
         foreach(var bucket in buckets)foreach(string window in new[]{"primary","secondary"}) {
             var rate=Obj(Get(Obj(bucket.Value),window));double used;long reset;int minutes;
             if(rate==null||!Double.TryParse(Str(Get(rate,"usedPercent")),System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out used)||Double.IsNaN(used)||Double.IsInfinity(used)||used<0||used>100||!Int64.TryParse(Str(Get(rate,"resetsAt")),out reset)||!Int32.TryParse(Str(Get(rate,"windowDurationMins")),out minutes)||(minutes!=300&&minutes!=10080))continue;
@@ -92,11 +95,16 @@ public sealed class CodexMonitor : IDisposable {
             double remaining=100-used;string label=(bucket.Key=="codex"?"Codex":bucket.Key)+" "+(minutes==300?"5 小时":"周额度");
             readings.Add(new QuotaReading {Bucket=bucket.Key,Minutes=minutes,Remaining=remaining,ResetUtc=resetTime});
             summaries.Add(label+"：剩余 "+remaining.ToString("0.#")+"%\n重置："+resetTime.ToLocalTime().ToString("MM-dd HH:mm"));
-            string key=bucket.Key+"/"+minutes,old;int previous=100;
-            if(ledger.TryGetValue(key,out old)) { string[] parts=old.Split(':');if(parts.Length==2&&parts[0]==reset.ToString())Int32.TryParse(parts[1],out previous); }
-            if(notify&&ShouldAlert(remaining,previous)) {
-                alerts.Add(label+"剩余 "+remaining.ToString("0.#")+"%，"+(remaining<=0?"这条能量槽见底了。":remaining<5?"快见底了，先把进度存好。":"留点额度给下一关。"));
-                ledger[key]=reset+":"+Level(remaining);
+            string alertKey=minutes+"/"+reset;QuotaReading candidate;
+            if(!alertWindows.TryGetValue(alertKey,out candidate)||remaining<candidate.Remaining)alertWindows[alertKey]=new QuotaReading {Bucket=bucket.Key,Minutes=minutes,Remaining=remaining,ResetUtc=resetTime};
+        }
+        foreach(var pair in alertWindows) {
+            var q=pair.Value;string key="window/"+pair.Key,old;int previous=100;
+            if(ledger.TryGetValue(key,out old))Int32.TryParse(old,out previous);
+            if(notify&&ShouldAlert(q.Remaining,previous)) {
+                string label=(q.Bucket=="codex"?"Codex":q.Bucket)+" "+(q.Minutes==300?"5 小时":"周额度");
+                alerts.Add(label+"剩余 "+q.Remaining.ToString("0.#")+"%，"+(q.Remaining<=0?"这条能量槽见底了。":q.Remaining<5?"快见底了，先把进度存好。":"留点额度给下一关。"));
+                ledger[key]=Level(q.Remaining).ToString(System.Globalization.CultureInfo.InvariantCulture);
             }
         }
         if(Quotas!=null)Quotas(readings);
@@ -120,12 +128,27 @@ public sealed class CodexMonitor : IDisposable {
     }
     void PublishWorking(bool previous) {if(previous!=active.Any()&&Working!=null)Working(active.Any());}
     void ExpireInactive() {
-        bool previous=active.Any();DateTime cutoff=DateTime.UtcNow.AddSeconds(-20);
+        bool previous=active.Any();DateTime cutoff=DateTime.UtcNow.AddMinutes(-30);
         foreach(string file in active.Keys.ToArray()) {
             try {if(!File.Exists(file)||File.GetLastWriteTimeUtc(file)<cutoff)active.Remove(file);}
             catch {active.Remove(file);}
         }
+        foreach(string file in pendingCompletions.Keys.Where(x=>!active.ContainsKey(x)).ToArray())pendingCompletions.Remove(file);
         PublishWorking(previous);
+    }
+    void FlushCompletions(DateTime now) {
+        bool wasWorking=active.Any();
+        foreach(var pair in pendingCompletions.ToArray()) {
+            string file=pair.Key;var pendingCompletion=pair.Value;
+            if(now<pendingCompletion.ReadyUtc)continue;
+            try {if(File.Exists(file)&&(now-File.GetLastWriteTimeUtc(file)).TotalSeconds<3) {pendingCompletion.ReadyUtc=now.AddSeconds(3);continue;}}catch { }
+            string current;if(active.TryGetValue(file,out current)&&(pendingCompletion.Id=="current"||current==pendingCompletion.Id))active.Remove(file);
+            pendingCompletions.Remove(file);
+            if(!completed.Add(file+"/"+pendingCompletion.Id)||!pendingCompletion.Notify||!TasksEnabled)continue;
+            string name=Path.GetFileNameWithoutExtension(file);name=name.Length>36?name.Substring(name.Length-36):name;
+            Alert("Codex 任务运行结束","本轮运行结束，去看看战利品吧。\n任务尾号 "+name.Substring(Math.Max(0,name.Length-8))+" · 请在 Codex 验收结果");
+        }
+        PublishWorking(wasWorking);
     }
     void Scan(bool baseline) {
         string directory=Path.Combine(home,"sessions");if(!Directory.Exists(directory))return;
@@ -133,6 +156,7 @@ public sealed class CodexMonitor : IDisposable {
             if(stop.WaitOne(0))return;
             try {
                 var info=new FileInfo(file);long offset;
+                if(baseline) {offsets[file]=info.Length;pending.Remove(file);continue;}
                 if(!offsets.TryGetValue(file,out offset)) { offsets[file]=baseline?Math.Max(0,info.Length-1024*1024):0;offset=offsets[file]; }
                 if(info.Length<offset) { offset=0;pending.Remove(file); }
                 if(info.Length==offset)continue;
@@ -143,16 +167,16 @@ public sealed class CodexMonitor : IDisposable {
                         consumed++;
                         if(value==10) {
                             string line=Encoding.UTF8.GetString(bytes.ToArray());string id=CompletionId(line);bytes.Clear();
-                            bool wasWorking=active.Any();string taskStarted=StartedId(line),ended=EndedId(line);
-                            if(taskStarted!=null)active[file]=taskStarted;
+                            bool wasWorking=active.Any();string taskStarted=StartedId(line),aborted=EventId(line,"turn_aborted");
+                            DateTime eventTime;
+                            bool fresh=DateTime.TryParse(Str(Get(Parse(line),"timestamp")),null,System.Globalization.DateTimeStyles.RoundtripKind,out eventTime)&&eventTime.ToUniversalTime()>=started;
+                            if(taskStarted!=null&&fresh) {active[file]=taskStarted;pendingCompletions.Remove(file);}
                             string current;
-                            if(ended!=null&&active.TryGetValue(file,out current)&&(ended=="current"||current==ended))active.Remove(file);
+                            if(aborted!=null&&active.TryGetValue(file,out current)&&(aborted=="current"||current==aborted)) {active.Remove(file);pendingCompletions.Remove(file);}
                             PublishWorking(wasWorking);
-                            if(id!=null) { DateTime timestamp;if(!DateTime.TryParse(Str(Get(Parse(line),"timestamp")),null,System.Globalization.DateTimeStyles.RoundtripKind,out timestamp)||timestamp.ToUniversalTime()<started)id=null; }
-                            if(!baseline&&TasksEnabled&&!String.IsNullOrEmpty(id)&&completed.Add(file+"/"+id)) {
-                                string name=Path.GetFileNameWithoutExtension(file);name=name.Length>36?name.Substring(name.Length-36):name;
-                                Alert("Codex 任务运行结束","本轮运行结束，去看看战利品吧。\n任务尾号 "+name.Substring(Math.Max(0,name.Length-8))+" · 请在 Codex 验收结果");
-                            }
+                            DateTime timestamp=DateTime.MinValue;
+                            if(id!=null&&(!DateTime.TryParse(Str(Get(Parse(line),"timestamp")),null,System.Globalization.DateTimeStyles.RoundtripKind,out timestamp)||timestamp.ToUniversalTime()<started))id=null;
+                            if(!baseline&&!String.IsNullOrEmpty(id)&&active.TryGetValue(file,out current)&&(id=="current"||current==id))pendingCompletions[file]=new PendingCompletion {Id=id,EventUtc=timestamp.ToUniversalTime(),ReadyUtc=DateTime.UtcNow.AddSeconds(8),Notify=TasksEnabled};
                         } else if(bytes.Count<16*1024*1024) { bytes.Add((byte)value); }
                     }
                     offsets[file]=stream.Position;
@@ -160,6 +184,7 @@ public sealed class CodexMonitor : IDisposable {
             }catch(IOException) { }catch(UnauthorizedAccessException) { }
         }
         ExpireInactive();
+        FlushCompletions(DateTime.UtcNow);
         if(completed.Count>2000)completed.Clear();
     }
     void Run() {
@@ -183,25 +208,36 @@ public sealed class CodexMonitor : IDisposable {
         string log=Path.Combine(fixture,"sessions","rollout-test.jsonl");
         Func<string,string,string> record=(id,time)=>"{\"timestamp\":\""+time+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\""+id+"\"}}\n";
         File.WriteAllText(log,record("old",DateTime.UtcNow.AddHours(-1).ToString("o")),new UTF8Encoding(false));
+        File.AppendAllText(log,"{\"timestamp\":\""+DateTime.UtcNow.AddMinutes(-2).ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"abandoned-history\"}}\n");
         int notices=0;
         using(var monitor=new CodexMonitor(fixture,fixture)) {
             var states=new List<bool>();monitor.Working=v=>states.Add(v);monitor.Notice=delegate { notices++; };monitor.Scan(true);monitor.Scan(false);if(notices!=0)throw new Exception("historical completion replayed");
+            if(states.Count!=0||monitor.active.Count!=0)throw new Exception("historical start activated working state");
+            File.WriteAllText(Path.Combine(fixture,"sessions","imported.jsonl"),"{\"timestamp\":\""+DateTime.UtcNow.AddMinutes(-2).ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"imported-old\"}}\n");monitor.Scan(false);
+            if(states.Count!=0)throw new Exception("imported old start activated working state");
             File.AppendAllText(log,"{\"timestamp\":\""+DateTime.UtcNow.ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"live\"}}\n");monitor.Scan(false);if(states.Count==0||!states.Last())throw new Exception("working state did not start");
-            File.SetLastWriteTimeUtc(log,DateTime.UtcNow.AddMinutes(-1));monitor.Scan(false);if(states.Last())throw new Exception("stale working state did not expire");
+            File.SetLastWriteTimeUtc(log,DateTime.UtcNow.AddMinutes(-1));monitor.Scan(false);if(!states.Last())throw new Exception("working state expired during a quiet task");
+            File.SetLastWriteTimeUtc(log,DateTime.UtcNow.AddMinutes(-31));monitor.Scan(false);if(states.Last())throw new Exception("abandoned working state did not expire");
             File.AppendAllText(log,"{\"timestamp\":\""+DateTime.UtcNow.ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"live\"}}\n");monitor.Scan(false);if(!states.Last())throw new Exception("working state did not restart");
             File.AppendAllText(log,"{\"timestamp\":\""+DateTime.UtcNow.ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"turn_aborted\",\"turn_id\":\"live\"}}\n");monitor.Scan(false);if(states.Last())throw new Exception("working state did not stop");
             string completion=record("new",DateTime.UtcNow.ToString("o"));
+            File.AppendAllText(log,"{\"timestamp\":\""+DateTime.UtcNow.ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"new\"}}\n");monitor.Scan(false);
             File.AppendAllText(log,completion.Substring(0,completion.Length-1));monitor.Scan(false);if(notices!=0)throw new Exception("partial line consumed");
-            File.AppendAllText(log,"\n");monitor.Scan(false);if(notices!=1)throw new Exception("new completion missing");
+            File.AppendAllText(log,"\n");monitor.Scan(false);if(notices!=0||!states.Last())throw new Exception("completion was not debounced");
+            monitor.pendingCompletions[log].ReadyUtc=DateTime.UtcNow.AddSeconds(-1);File.SetLastWriteTimeUtc(log,DateTime.UtcNow.AddSeconds(-5));monitor.FlushCompletions(DateTime.UtcNow);if(notices!=1||states.Last())throw new Exception("confirmed completion missing");
             File.AppendAllText(log,completion);monitor.Scan(false);if(notices!=1)throw new Exception("duplicate completion");
-            monitor.TasksEnabled=false;File.AppendAllText(log,record("muted",DateTime.UtcNow.ToString("o")));monitor.Scan(false);monitor.TasksEnabled=true;monitor.Scan(false);if(notices!=1)throw new Exception("muted completion replayed");
+            File.AppendAllText(log,"{\"timestamp\":\""+DateTime.UtcNow.ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"muted\"}}\n");monitor.Scan(false);monitor.TasksEnabled=false;File.AppendAllText(log,record("muted",DateTime.UtcNow.ToString("o")));monitor.Scan(false);monitor.pendingCompletions[log].ReadyUtc=DateTime.UtcNow.AddSeconds(-1);File.SetLastWriteTimeUtc(log,DateTime.UtcNow.AddSeconds(-5));monitor.FlushCompletions(DateTime.UtcNow);monitor.TasksEnabled=true;if(notices!=1||states.Last())throw new Exception("muted completion replayed or working state stuck");
             File.WriteAllText(Path.Combine(fixture,"sessions","history.jsonl"),record("history",DateTime.UtcNow.AddHours(-1).ToString("o")));monitor.Scan(false);if(notices!=1)throw new Exception("imported history replayed");
             long reset=(long)(DateTime.UtcNow.AddHours(4)-new DateTime(1970,1,1,0,0,0,DateTimeKind.Utc)).TotalSeconds;
             Func<int,long,Dictionary<string,object>> rates=(used,at)=>Parse("{\"rateLimits\":{\"primary\":{\"usedPercent\":"+used+",\"windowDurationMins\":300,\"resetsAt\":"+at+"}}}");
             monitor.ApplyRates(rates(60,reset),true);monitor.ApplyRates(rates(61,reset),true);if(notices!=2)throw new Exception("quota repeated");
             monitor.ApplyRates(rates(97,reset),true);if(notices!=3)throw new Exception("quota severity jump missing");
             monitor.ApplyRates(Parse("{\"rateLimits\":{\"primary\":null}}"),true);if(notices!=3)throw new Exception("null quota alerted");
-            using(var restarted=new CodexMonitor(fixture,fixture)) { restarted.Notice=delegate { notices++; };restarted.ApplyRates(rates(97,reset),true);if(notices!=3)throw new Exception("quota repeated after restart");restarted.ApplyRates(rates(60,reset+3600),true);if(notices!=4)throw new Exception("quota rollover missing"); }
+            using(var restarted=new CodexMonitor(fixture,fixture)) { restarted.Notice=delegate { notices++; };restarted.ApplyRates(rates(97,reset),true);if(notices!=3)throw new Exception("quota repeated after restart");restarted.ApplyRates(rates(60,reset+3600),true);if(notices!=4)throw new Exception("quota rollover missing");
+                long weeklyReset=reset+7200;
+                var duplicateWeekly=Parse("{\"rateLimitsByLimitId\":{\"codex\":{\"secondary\":{\"usedPercent\":60,\"windowDurationMins\":10080,\"resetsAt\":"+weeklyReset+"}},\"other\":{\"secondary\":{\"usedPercent\":61,\"windowDurationMins\":10080,\"resetsAt\":"+weeklyReset+"}}}}");
+                restarted.ApplyRates(duplicateWeekly,true);restarted.ApplyRates(duplicateWeekly,true);if(notices!=5)throw new Exception("same weekly window alerted more than once");
+            }
         }
     }
 }

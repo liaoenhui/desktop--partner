@@ -70,7 +70,7 @@ public partial class PetWindow {
         bool hasReplies=replies.Children.Count>0;
         replies.Visibility=hasReplies?Visibility.Visible:Visibility.Collapsed;
         replies.Margin=hasReplies?new Thickness(0,6,0,0):new Thickness(0);
-        bubble.Width=Math.Max(80,Math.Min(265,Width-8));
+        bubble.Width=Math.Max(80,Math.Min(265,prefs.Size*.66+20));
         foreach(Button button in replies.Children) {
             var label=button.Content as TextBlock;
             if(label!=null)label.MaxWidth=Math.Max(30,bubble.Width-bubble.Padding.Left-bubble.Padding.Right-button.Padding.Left-button.Padding.Right-4);
@@ -158,7 +158,7 @@ public partial class PetWindow {
             for(int key=8;key<255;key++)if((GetAsyncKeyState(key)&0x8000)!=0) { input=true;break; }
         }
         if(input)inputUntil=now+.65;
-        bool animate=prefs.InputReaction&&IsVisible&&!isAway&&!pressed&&!menuOpen&&settings==null&&now<inputUntil;
+        bool animate=!codexFormWorking&&prefs.InputReaction&&IsVisible&&!isAway&&!pressed&&!menuOpen&&settings==null&&now<inputUntil;
         if(animate&&(state=="idle"||state=="blink"||(inputAnimating&&state=="game"))) {
             if(!inputAnimating||state!="game") { Enter("game");inputAnimating=true; }
             keyboard.Visibility=Visibility.Visible;

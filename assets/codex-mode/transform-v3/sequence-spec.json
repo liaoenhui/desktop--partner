@@ -1,0 +1,32 @@
+{
+  "name": "daily_to_invincible_player",
+  "version": 3,
+  "status": "ready-for-runtime-integration",
+  "sourceSheet": "../transform-v3-keyframes.png",
+  "preview": "../transform-v3-preview.gif",
+  "frameSize": { "width": 544, "height": 373 },
+  "runtimeStates": ["daily", "invincible_player"],
+  "battleNormalIsRuntimeState": false,
+  "handedness": {
+    "characterLeft": "viewer-right; produces and holds the game cartridge",
+    "characterRight": "viewer-left; exposes and swipes the glove control strip"
+  },
+  "frames": [
+    { "id": 0, "file": "frames/frame_00.png", "durationMs": 120, "phase": "daily_idle", "description": "Daily form, visor on head, both hands relaxed." },
+    { "id": 1, "file": "frames/frame_01.png", "durationMs": 100, "phase": "cartridge_draw", "description": "Left hand draws the game cartridge; right forearm begins to rise." },
+    { "id": 2, "file": "frames/frame_02.png", "durationMs": 110, "phase": "cartridge_present", "description": "Left hand holds the cartridge upright at chest height; right glove control strip faces inward." },
+    { "id": 3, "file": "frames/frame_03.png", "durationMs": 80, "phase": "glove_swipe_start", "description": "Right hand begins a clear horizontal swipe across its glove; cartridge remains steady." },
+    { "id": 4, "file": "frames/frame_04.png", "durationMs": 80, "phase": "glove_swipe_finish", "description": "Swipe trail reaches the end; glove and cartridge light up cyan to magenta." },
+    { "id": 5, "file": "frames/frame_05.png", "durationMs": 90, "phase": "visor_materialize", "description": "Activation flash reaches the face; angular star visor starts forming; wing roots light." },
+    { "id": 6, "file": "frames/frame_06.png", "durationMs": 100, "phase": "wings_and_tail", "description": "Star visor locks; light wings and segmented tail form; cartridge dissolves into pixels." },
+    { "id": 7, "file": "frames/frame_07.png", "durationMs": 140, "phase": "wing_expand", "description": "Light wings fan open while both arms begin to settle." },
+    { "id": 8, "file": "frames/frame_08.png", "durationMs": 500, "phase": "transformed_idle", "description": "Complete Invincible Player form, full light wings and tail, hands lowered naturally." }
+  ],
+  "effects": {
+    "cartridge": "effects/game-cartridge.png",
+    "gloveSwipe": "effects/glove-swipe-trail.png",
+    "activationFlash": "effects/activation-flash.png"
+  },
+  "reverseOnExit": false,
+  "exitAnimation": "short pixel dissolve back to daily form; do not reverse the cartridge action"
+}

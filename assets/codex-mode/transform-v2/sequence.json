@@ -1,0 +1,27 @@
+{
+  "name": "daily_to_invincible_player",
+  "version": 2,
+  "frameSize": {
+    "width": 416,
+    "height": 544
+  },
+  "loop": false,
+  "frames": [
+    { "file": "frame_00.png", "durationMs": 140, "phase": "daily" },
+    { "file": "frame_01.png", "durationMs": 110, "phase": "hand_raise" },
+    { "file": "frame_02.png", "durationMs": 90, "phase": "visor_charge" },
+    { "file": "frame_03.png", "durationMs": 90, "phase": "visor_lock" },
+    { "file": "frame_04.png", "durationMs": 90, "phase": "wing_seed" },
+    { "file": "frame_05.png", "durationMs": 110, "phase": "wing_expand" },
+    { "file": "frame_06.png", "durationMs": 130, "phase": "hand_lower" },
+    { "file": "frame_07.png", "durationMs": 500, "phase": "transformed_idle" }
+  ],
+  "reverseOnExit": true,
+  "designNotes": {
+    "runtimeStates": ["daily", "invincible_player"],
+    "battleNormalIsRuntimeState": false,
+    "visor": "sharp cyan-magenta star visor over the eyes",
+    "wings": "multi-blade translucent cyan-lavender-pink light wings",
+    "tail": "luminous segmented technology tail"
+  }
+}

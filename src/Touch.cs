@@ -42,6 +42,7 @@ public partial class PetWindow {
         TouchReaction(pressedZone,touchCombo>=4?"repeat":"tap");
     }
     void TouchReaction(TouchZone zone,string gesture) {
+        if(WorkFormReply())return;
         string part=zone.ToString().ToLowerInvariant(),key="touch."+part+"."+gesture;
         string message,action;
         if(zone==TouchZone.Head) {

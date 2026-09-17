@@ -32,7 +32,9 @@ public partial class PetWindow {
         if(element is ComboBox)return;
         for(int i=0;i<VisualTreeHelper.GetChildrenCount(element);i++)ThemeText(VisualTreeHelper.GetChild(element,i));
     }
+    [StructLayout(LayoutKind.Sequential)] struct QuietRect { public int Left,Top,Right,Bottom; }
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd,out QuietRect rect);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd,out uint process);
     [DllImport("user32.dll",SetLastError=true)] static extern bool RegisterHotKey(IntPtr hwnd,int id,uint modifiers,uint key);
     [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr hwnd,int id);
@@ -48,21 +50,26 @@ public partial class PetWindow {
         if(String.IsNullOrWhiteSpace(file)||BrowserExecutable(file)||games==null)return false;
         return games.Any(x=>!String.IsNullOrWhiteSpace(x)&&(System.IO.Path.IsPathRooted(x)?String.Equals(x,path,StringComparison.OrdinalIgnoreCase):String.Equals(x,file,StringComparison.OrdinalIgnoreCase)));
     }
+    static bool CoversScreen(Rect window,Rect screen) {return window.Left<=screen.Left+2&&window.Top<=screen.Top+2&&window.Right>=screen.Right-2&&window.Bottom>=screen.Bottom-2;}
     uint lastGameProcess;
     DateTime gameProcessChecked;
     bool cachedGame;
     bool GameNow() {
         IntPtr hwnd=GetForegroundWindow();if(hwnd==IntPtr.Zero)return false;
         uint process;GetWindowThreadProcessId(hwnd,out process);if(process==(uint)System.Diagnostics.Process.GetCurrentProcess().Id)return gameDetected;
-        if(process==lastGameProcess&&(DateTime.UtcNow-gameProcessChecked).TotalSeconds<5)return cachedGame;
-        lastGameProcess=process;gameProcessChecked=DateTime.UtcNow;cachedGame=false;
-        try { using(var app=System.Diagnostics.Process.GetProcessById((int)process)) {
-            string file=app.ProcessName+".exe",path="";
-            if(BrowserExecutable(file))return false;
-            if(prefs.QuietGames.Any(x=>!String.IsNullOrWhiteSpace(x)&&System.IO.Path.IsPathRooted(x)))try {path=app.MainModule.FileName;}catch(System.ComponentModel.Win32Exception){}catch(InvalidOperationException){}
-            cachedGame=GameExecutable(file,path,prefs.QuietGames);
-        }}catch(ArgumentException){}catch(InvalidOperationException){}catch(System.ComponentModel.Win32Exception){}
-        return cachedGame;
+        if(process!=lastGameProcess||(DateTime.UtcNow-gameProcessChecked).TotalSeconds>=5) {
+            lastGameProcess=process;gameProcessChecked=DateTime.UtcNow;cachedGame=false;
+            try { using(var app=System.Diagnostics.Process.GetProcessById((int)process)) {
+                string file=app.ProcessName+".exe",path="";
+                if(BrowserExecutable(file))return false;
+                if(prefs.QuietGames.Any(x=>!String.IsNullOrWhiteSpace(x)&&System.IO.Path.IsPathRooted(x)))try {path=app.MainModule.FileName;}catch(System.ComponentModel.Win32Exception){}catch(InvalidOperationException){}
+                cachedGame=GameExecutable(file,path,prefs.QuietGames);
+            }}catch(ArgumentException){}catch(InvalidOperationException){}catch(System.ComponentModel.Win32Exception){}
+        }
+        if(!cachedGame)return false;
+        QuietRect rect;if(!GetWindowRect(hwnd,out rect)||rect.Right<=rect.Left||rect.Bottom<=rect.Top)return false;
+        var screen=Forms.Screen.FromHandle(hwnd).Bounds;
+        return CoversScreen(new Rect(rect.Left,rect.Top,rect.Right-rect.Left,rect.Bottom-rect.Top),new Rect(screen.Left,screen.Top,screen.Width,screen.Height));
     }
     void InitExperience(IntPtr hwnd) {
         if(testing) { hotkeyStatus="预览／自检模式不注册全局快捷键";return; }
@@ -97,8 +104,8 @@ public partial class PetWindow {
         } else if(autoHidden) { autoHidden=false;if(!manuallyHidden)Show(); }
     }
     void AddExperienceSettings(Panel panel) {
-        var quiet=new CheckBox { Content="操作游戏时自动隐藏，切回其他应用恢复",IsChecked=prefs.AutoQuiet,Margin=new Thickness(0,8,0,10) };quiet.Click+=delegate { prefs.AutoQuiet=quiet.IsChecked==true;Save(); };panel.Children.Add(quiet);
-        panel.Children.Add(new TextBlock {Text="仅下列游戏触发免打扰，浏览器全屏不隐藏。\n未识别的游戏可添加实际运行的 .exe（非启动器）。",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,8)});
+        var quiet=new CheckBox { Content="仅全屏游戏时自动隐藏，切回其他应用恢复",IsChecked=prefs.AutoQuiet,Margin=new Thickness(0,8,0,10) };quiet.Click+=delegate { prefs.AutoQuiet=quiet.IsChecked==true;Save(); };panel.Children.Add(quiet);
+        panel.Children.Add(new TextBlock {Text="只有下列游戏真正铺满所在屏幕时触发；窗口化游戏和浏览器全屏均不隐藏。\n未识别的游戏可添加实际运行的 .exe（非启动器）。",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,8)});
         var games=new ComboBox {Margin=new Thickness(0,0,0,8),MaxDropDownHeight=180};panel.Children.Add(games);
         Action refreshGames=()=>{games.ItemsSource=null;games.ItemsSource=prefs.QuietGames.ToArray();if(games.Items.Count>0)games.SelectedIndex=0;gameProcessChecked=DateTime.MinValue;};refreshGames();
         AddButton(panel,"添加游戏…",delegate {
@@ -115,6 +122,7 @@ public partial class PetWindow {
     void ExperienceTests() {
         var games=new[]{"StarRail.exe",@"C:\Games\Custom\Play.exe","chrome.exe"};
         if(!GameExecutable("starrail.exe","",games)||!GameExecutable("Play.exe",@"C:\Games\Custom\Play.exe",games)||GameExecutable("Play.exe",@"C:\Work\Play.exe",games)||GameExecutable("chrome.exe","",games)||GameExecutable("msedge.exe","",games)||GameExecutable("POWERPNT.exe","",games)||GameExecutable("unknown.exe","",games)||GameExecutable("","",games))throw new Exception("game-only quiet classification failed");
+        if(!CoversScreen(new Rect(-1920,0,1920,1080),new Rect(-1920,0,1920,1080))||CoversScreen(new Rect(0,0,1600,900),new Rect(0,0,1920,1080))||CoversScreen(new Rect(0,0,1920,1040),new Rect(0,0,1920,1080)))throw new Exception("fullscreen game geometry failed");
         gameDetected=true;prefs.AutoQuiet=true;quietOverride=false;if(!QuietActive)throw new Exception("quiet mode not active");quietOverride=true;if(QuietActive)throw new Exception("manual reveal override failed");quietOverride=false;prefs.AutoQuiet=false;if(QuietActive)throw new Exception("quiet toggle ignored");prefs.AutoQuiet=true;gameDetected=false;
         bool wasVisible=IsVisible,reminders=prefs.TimeReminders;prefs.TimeReminders=false;
         Show();ApplyGamePresence(GameExecutable("StarRail.exe","",games));if(IsVisible||!autoHidden||!QuietActive)throw new Exception("game did not hide pet");
