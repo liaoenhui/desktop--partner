@@ -2,7 +2,7 @@
 
 ## 在另一台电脑直接使用
 
-[下载 v2.6.5 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.5-Windows-x64.zip)
+[下载 v2.6.6 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.6-Windows-x64.zip)
 
 完整解压后运行 `SilverWolfPet.exe`，保留同目录的 `assets` 文件夹。若旧版正在运行，先从托盘退出。无需安装开发工具。
 
@@ -10,7 +10,12 @@
 
 新电脑的 Codex 需单独登录；桌宠监测新电脑的本机任务，登录信息和旧电脑个人设置不随本仓库同步。
 
-Windows 10/11 x64 桌宠。默认形象基于用户确认的银狼 LV.999 Q 版概念稿。基本互动离线运行；Codex 额度功能使用本机已登录的 Codex 联网查询。新版运行 `dist/SilverWolfPet-v2.6.5/SilverWolfPet.exe`，请保留同目录的 assets 文件夹。启动新版前，在旧版托盘菜单中退出旧版；各版共用设置，仅允许运行一个桌宠。
+Windows 10/11 x64 桌宠。默认形象基于用户确认的银狼 LV.999 Q 版概念稿。基本互动离线运行；Codex 额度功能使用本机已登录的 Codex 联网查询。新版运行 `dist/SilverWolfPet-v2.6.6/SilverWolfPet.exe`，请保留同目录的 assets 文件夹。启动新版前，在旧版托盘菜单中退出旧版；各版共用设置，仅允许运行一个桌宠。
+
+## v2.6.6 全息键盘位置
+
+- 全息键盘改为以银狼身体中心对齐，移除原有的横向偏移。
+- 键盘整体略微上移，并按桌宠尺寸保留最低安全高度，避免遮挡左脚附近的骇客豆额度徽标。
 
 ## v2.6.5 任务状态与额度徽标
 
