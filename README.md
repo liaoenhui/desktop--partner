@@ -2,7 +2,7 @@
 
 ## 在另一台电脑直接使用
 
-[下载 v2.6.4 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.4-Windows-x64.zip)
+[下载 v2.6.5 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.5-Windows-x64.zip)
 
 完整解压后运行 `SilverWolfPet.exe`，保留同目录的 `assets` 文件夹。若旧版正在运行，先从托盘退出。无需安装开发工具。
 
@@ -10,7 +10,12 @@
 
 新电脑的 Codex 需单独登录；桌宠监测新电脑的本机任务，登录信息和旧电脑个人设置不随本仓库同步。
 
-Windows 10/11 x64 桌宠。默认形象基于用户确认的银狼 LV.999 Q 版概念稿。基本互动离线运行；Codex 额度功能使用本机已登录的 Codex 联网查询。新版运行 `dist/SilverWolfPet-v2.6.4/SilverWolfPet.exe`，请保留同目录的 assets 文件夹。启动新版前，在旧版托盘菜单中退出旧版；各版共用设置，仅允许运行一个桌宠。
+Windows 10/11 x64 桌宠。默认形象基于用户确认的银狼 LV.999 Q 版概念稿。基本互动离线运行；Codex 额度功能使用本机已登录的 Codex 联网查询。新版运行 `dist/SilverWolfPet-v2.6.5/SilverWolfPet.exe`，请保留同目录的 assets 文件夹。启动新版前，在旧版托盘菜单中退出旧版；各版共用设置，仅允许运行一个桌宠。
+
+## v2.6.5 任务状态与额度徽标
+
+- 骇客豆只在 Codex 任务日志仍持续更新时张嘴；异常退出、限额中断或遗留的开始事件会在 20 秒后自动失效。
+- 头顶额度改为紧凑的半透明赛博 HUD，使用青白紫渐变数字、缩小百分号与细光边。
 
 ## v2.6.4 骇客豆与赛博额度终端
 

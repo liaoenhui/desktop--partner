@@ -21,7 +21,7 @@ public sealed class CodexMonitor : IDisposable {
     readonly Dictionary<string,string> ledger=new Dictionary<string,string>();
     readonly Dictionary<string,long> offsets=new Dictionary<string,long>();
     readonly HashSet<string> completed=new HashSet<string>();
-    readonly HashSet<string> active=new HashSet<string>();
+    readonly Dictionary<string,string> active=new Dictionary<string,string>();
     readonly Dictionary<string,List<byte>> pending=new Dictionary<string,List<byte>>();
     readonly DateTime started=DateTime.UtcNow;
     Process server;
@@ -119,6 +119,14 @@ public sealed class CodexMonitor : IDisposable {
         try {var root=Parse(line);if(Str(Get(root,"type"))!="event_msg")return null;var payload=Obj(Get(root,"payload"));if(Str(Get(payload,"type"))!=kind)return null;string id=Str(Get(payload,"turn_id"));return String.IsNullOrEmpty(id)?"current":id;}catch{return null;}
     }
     void PublishWorking(bool previous) {if(previous!=active.Any()&&Working!=null)Working(active.Any());}
+    void ExpireInactive() {
+        bool previous=active.Any();DateTime cutoff=DateTime.UtcNow.AddSeconds(-20);
+        foreach(string file in active.Keys.ToArray()) {
+            try {if(!File.Exists(file)||File.GetLastWriteTimeUtc(file)<cutoff)active.Remove(file);}
+            catch {active.Remove(file);}
+        }
+        PublishWorking(previous);
+    }
     void Scan(bool baseline) {
         string directory=Path.Combine(home,"sessions");if(!Directory.Exists(directory))return;
         foreach(string file in Directory.EnumerateFiles(directory,"*.jsonl",SearchOption.AllDirectories)) {
@@ -136,8 +144,9 @@ public sealed class CodexMonitor : IDisposable {
                         if(value==10) {
                             string line=Encoding.UTF8.GetString(bytes.ToArray());string id=CompletionId(line);bytes.Clear();
                             bool wasWorking=active.Any();string taskStarted=StartedId(line),ended=EndedId(line);
-                            if(taskStarted!=null)active.Add(file+"/"+taskStarted);
-                            if(ended!=null)active.Remove(file+"/"+ended);
+                            if(taskStarted!=null)active[file]=taskStarted;
+                            string current;
+                            if(ended!=null&&active.TryGetValue(file,out current)&&(ended=="current"||current==ended))active.Remove(file);
                             PublishWorking(wasWorking);
                             if(id!=null) { DateTime timestamp;if(!DateTime.TryParse(Str(Get(Parse(line),"timestamp")),null,System.Globalization.DateTimeStyles.RoundtripKind,out timestamp)||timestamp.ToUniversalTime()<started)id=null; }
                             if(!baseline&&TasksEnabled&&!String.IsNullOrEmpty(id)&&completed.Add(file+"/"+id)) {
@@ -150,6 +159,7 @@ public sealed class CodexMonitor : IDisposable {
                 }
             }catch(IOException) { }catch(UnauthorizedAccessException) { }
         }
+        ExpireInactive();
         if(completed.Count>2000)completed.Clear();
     }
     void Run() {
@@ -177,6 +187,8 @@ public sealed class CodexMonitor : IDisposable {
         using(var monitor=new CodexMonitor(fixture,fixture)) {
             var states=new List<bool>();monitor.Working=v=>states.Add(v);monitor.Notice=delegate { notices++; };monitor.Scan(true);monitor.Scan(false);if(notices!=0)throw new Exception("historical completion replayed");
             File.AppendAllText(log,"{\"timestamp\":\""+DateTime.UtcNow.ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"live\"}}\n");monitor.Scan(false);if(states.Count==0||!states.Last())throw new Exception("working state did not start");
+            File.SetLastWriteTimeUtc(log,DateTime.UtcNow.AddMinutes(-1));monitor.Scan(false);if(states.Last())throw new Exception("stale working state did not expire");
+            File.AppendAllText(log,"{\"timestamp\":\""+DateTime.UtcNow.ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"live\"}}\n");monitor.Scan(false);if(!states.Last())throw new Exception("working state did not restart");
             File.AppendAllText(log,"{\"timestamp\":\""+DateTime.UtcNow.ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"turn_aborted\",\"turn_id\":\"live\"}}\n");monitor.Scan(false);if(states.Last())throw new Exception("working state did not stop");
             string completion=record("new",DateTime.UtcNow.ToString("o"));
             File.AppendAllText(log,completion.Substring(0,completion.Length-1));monitor.Scan(false);if(notices!=0)throw new Exception("partial line consumed");
