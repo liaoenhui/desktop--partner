@@ -2,7 +2,7 @@
 
 ## 在另一台电脑直接使用
 
-[下载 v2.6.3 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.3-Windows-x64.zip)
+[下载 v2.6.4 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.4-Windows-x64.zip)
 
 完整解压后运行 `SilverWolfPet.exe`，保留同目录的 `assets` 文件夹。若旧版正在运行，先从托盘退出。无需安装开发工具。
 
@@ -10,8 +10,14 @@
 
 新电脑的 Codex 需单独登录；桌宠监测新电脑的本机任务，登录信息和旧电脑个人设置不随本仓库同步。
 
+Windows 10/11 x64 桌宠。默认形象基于用户确认的银狼 LV.999 Q 版概念稿。基本互动离线运行；Codex 额度功能使用本机已登录的 Codex 联网查询。新版运行 `dist/SilverWolfPet-v2.6.4/SilverWolfPet.exe`，请保留同目录的 assets 文件夹。启动新版前，在旧版托盘菜单中退出旧版；各版共用设置，仅允许运行一个桌宠。
 
-Windows 10/11 x64 桌宠。默认形象基于用户确认的银狼 LV.999 Q 版概念稿。基本互动离线运行；Codex 额度功能使用本机已登录的 Codex 联网查询。新版运行 `dist/SilverWolfPet-v2.6.3/SilverWolfPet.exe`，请保留同目录的 assets 文件夹。启动新版前，在旧版托盘菜单中退出旧版；各版共用设置，仅允许运行一个桌宠。
+## v2.6.4 骇客豆与赛博额度终端
+
+- 小黄豆重绘为球形骇客豆：像素墨镜、深色笑嘴和柔和悬浮光晕。额度三档仍为黄、蓝、红；中档蓝色改为青蓝至电紫的径向渐变，黄、红也使用同系列立体渐变。
+- Codex 日志出现 `task_started` 时嘴巴开始张合，`task_complete` 或任务中止后恢复静止；启动时读取最近任务状态。动画不发起模型请求，也不会消耗额度。
+- 额度终端改为深海蓝、电蓝和紫色的半透明渐变。标题、额度文字采用白—青—紫渐变与轻微青色光感，进度条同步使用新配色。
+- 新增任务开始、完成和中止状态解析测试，以及骇客豆渐变和工作嘴动画检查。原有额度、位置稳定、气泡避让、游戏免打扰与桌宠回归检查保留。
 
 ## v2.6.3 轻量随身入口与游戏免打扰
 

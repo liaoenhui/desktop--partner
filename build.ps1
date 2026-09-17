@@ -1,4 +1,4 @@
-﻿param([string]$OutputName = 'SilverWolfPet-v2.6.3')
+﻿param([string]$OutputName = 'SilverWolfPet-v2.6.4')
 $ErrorActionPreference = 'Stop'
 if ($OutputName -notmatch '^[a-zA-Z0-9][a-zA-Z0-9_.-]*$') { throw 'Invalid output directory name' }
 $projectRoot = $PSScriptRoot

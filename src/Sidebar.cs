@@ -18,7 +18,8 @@ public sealed class QuotaSidebar : IDisposable {
     readonly Window handle,popup;
     readonly DispatcherTimer timer=new DispatcherTimer();
     readonly TextBlock percent=new TextBlock {FontSize=11,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,HorizontalAlignment=HorizontalAlignment.Center};
-    readonly Ellipse bean=new Ellipse {Width=19,Height=21};
+    readonly Ellipse bean=new Ellipse {Width=28,Height=28};
+    readonly Border mouth=new Border {Width=17,Height=3,CornerRadius=new CornerRadius(6),Background=new SolidColorBrush(Color.FromRgb(23,12,62)),VerticalAlignment=VerticalAlignment.Top,HorizontalAlignment=HorizontalAlignment.Center,Margin=new Thickness(0,19,0,0)};
     readonly StackPanel rows=new StackPanel();
     readonly ScrollViewer rowsViewport;
     readonly TextBlock status=new TextBlock {FontSize=10,Foreground=new SolidColorBrush(Color.FromRgb(208,218,255)),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,10,0,0)};
@@ -31,7 +32,7 @@ public sealed class QuotaSidebar : IDisposable {
     readonly System.Windows.Shapes.Path shell=new System.Windows.Shapes.Path(),outline=new System.Windows.Shapes.Path();
     readonly StackPanel content=new StackPanel();
     readonly StackPanel body=new StackPanel {VerticalAlignment=VerticalAlignment.Center,IsHitTestVisible=false};
-    readonly Grid face=new Grid {Width=23,Height=24};
+    readonly Grid face=new Grid {Width=30,Height=30};
     bool? drawnDocked;
     bool? outlineRight;
     double outlineHeight=-1,outlineY=-1;
@@ -41,11 +42,29 @@ public sealed class QuotaSidebar : IDisposable {
     DateTime updated,enterAt,leaveAt,lastDraw;
     string failure="",device;
     double fraction;
-    bool pinned,hovering,disposed,dragged,canPlace=true,canShowHandle=true;
+    bool pinned,hovering,disposed,dragged,canPlace=true,canShowHandle=true,working;
     Rect previousPlacement=Rect.Empty;
     Point? dragStart;
     public static Color QuotaColor(double remaining) {return remaining>=60?Color.FromRgb(255,222,104):remaining>=20?Color.FromRgb(100,217,255):Color.FromRgb(255,113,133);}
-    static Brush Glass() {return new LinearGradientBrush(Color.FromArgb(238,89,112,215),Color.FromArgb(242,66,55,140),65);}
+    static Brush Glass() {
+        var brush=new LinearGradientBrush {StartPoint=new Point(0,0),EndPoint=new Point(1,1)};
+        brush.GradientStops.Add(new GradientStop(Color.FromArgb(245,19,38,94),0));
+        brush.GradientStops.Add(new GradientStop(Color.FromArgb(242,35,78,157),.48));
+        brush.GradientStops.Add(new GradientStop(Color.FromArgb(242,91,43,154),1));return brush;
+    }
+    static Brush Accent() {
+        var brush=new LinearGradientBrush {StartPoint=new Point(0,0),EndPoint=new Point(1,0)};
+        brush.GradientStops.Add(new GradientStop(Color.FromRgb(238,252,255),0));brush.GradientStops.Add(new GradientStop(Color.FromRgb(91,226,255),.55));brush.GradientStops.Add(new GradientStop(Color.FromRgb(185,132,255),1));return brush;
+    }
+    static Brush BeanBrush(double? remaining) {
+        Color a,b,c;
+        if(!remaining.HasValue){a=Color.FromRgb(224,231,255);b=Color.FromRgb(148,165,211);c=Color.FromRgb(96,77,164);}
+        else if(remaining.Value>=60){a=Color.FromRgb(255,255,210);b=Color.FromRgb(255,222,95);c=Color.FromRgb(255,145,80);}
+        else if(remaining.Value>=20){a=Color.FromRgb(199,255,255);b=Color.FromRgb(73,215,255);c=Color.FromRgb(116,76,255);}
+        else {a=Color.FromRgb(255,213,231);b=Color.FromRgb(255,99,143);c=Color.FromRgb(153,49,193);}
+        var brush=new RadialGradientBrush {Center=new Point(.34,.27),GradientOrigin=new Point(.25,.2),RadiusX=.8,RadiusY=.8};
+        brush.GradientStops.Add(new GradientStop(a,0));brush.GradientStops.Add(new GradientStop(b,.58));brush.GradientStops.Add(new GradientStop(c,1));return brush;
+    }
     static Window Surface(double width,double height,string title,bool inspect) {
         var w=new Window {Title=title,Width=width,Height=height,WindowStyle=WindowStyle.None,ResizeMode=ResizeMode.NoResize,AllowsTransparency=true,Background=Brushes.Transparent,ShowInTaskbar=inspect,ShowActivated=false,Topmost=true,FontFamily=new FontFamily("Microsoft YaHei")};
         w.SourceInitialized+=delegate {var h=new WindowInteropHelper(w).Handle;SetWindowLong(h,-20,GetWindowLong(h,-20)|0x08000000|(inspect?0:0x80));};
@@ -63,15 +82,19 @@ public sealed class QuotaSidebar : IDisposable {
         shell.Fill=Glass();shell.Stroke=new SolidColorBrush(Color.FromArgb(185,207,225,255));shell.StrokeThickness=1;scene.Children.Add(shell);
         scene.Children.Add(body);
         face.Children.Add(bean);
-        var eyes=new Canvas {Width=23,Height=24};face.Children.Add(eyes);
-        foreach(double x in new[]{8.0,14.0}){var eye=new Rectangle {Width=2,Height=4,RadiusX=.6,RadiusY=.6,Fill=new SolidColorBrush(Color.FromRgb(38,35,69))};Canvas.SetLeft(eye,x);Canvas.SetTop(eye,9);eyes.Children.Add(eye);}
+        var glasses=new Canvas {Width=30,Height=30,IsHitTestVisible=false};face.Children.Add(glasses);
+        var ink=new SolidColorBrush(Color.FromRgb(35,29,96));
+        glasses.Children.Add(new System.Windows.Shapes.Path {Data=Geometry.Parse("M2,7 L12,9 L12,15 L9,18 L4,16 Z M18,9 L28,7 L26,16 L21,18 L18,15 Z"),Fill=ink});
+        var bridge=new Rectangle {Width=6,Height=2,Fill=ink};Canvas.SetLeft(bridge,12);Canvas.SetTop(bridge,10);glasses.Children.Add(bridge);
+        foreach(var p in new[]{new Point(5,11),new Point(9,13),new Point(20,13),new Point(24,11)}) {var pixel=new Rectangle {Width=3,Height=3,Fill=new SolidColorBrush(p.X<15?Color.FromRgb(117,235,255):Color.FromRgb(235,128,255))};Canvas.SetLeft(pixel,p.X);Canvas.SetTop(pixel,p.Y);glasses.Children.Add(pixel);}
+        face.Children.Add(mouth);
         SetHandleStyle(docked);
         content.Margin=new Thickness(17,14,29,14);
         var popupScene=new Grid();outline.Fill=Glass();outline.Stroke=new SolidColorBrush(Color.FromArgb(195,191,213,255));outline.StrokeThickness=1;popupScene.Children.Add(outline);popupScene.Children.Add(content);popup.Content=popupScene;
         var head=new DockPanel {Margin=new Thickness(0,0,0,14)};
         var pin=new Button {Content="◇",ToolTip="固定／自动收起",Width=25,Height=23,Background=Brushes.Transparent,Foreground=Brushes.White,BorderThickness=new Thickness(0),Cursor=Cursors.Hand};DockPanel.SetDock(pin,Dock.Right);head.Children.Add(pin);
         pin.Click+=delegate {pinned=!pinned;pin.Content=pinned?"◆":"◇";};
-        head.Children.Add(new TextBlock {Text="▪  Codex 额度",Foreground=Brushes.White,FontSize=14,VerticalAlignment=VerticalAlignment.Center});content.Children.Add(head);
+        head.Children.Add(new TextBlock {Text="▪  CODEX 额度",Foreground=Accent(),FontSize=14,FontWeight=FontWeights.SemiBold,Effect=new System.Windows.Media.Effects.DropShadowEffect {Color=Color.FromRgb(55,206,255),BlurRadius=5,ShadowDepth=0,Opacity=.5},VerticalAlignment=VerticalAlignment.Center});content.Children.Add(head);
         rowsViewport=new ScrollViewer {Content=rows,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};content.Children.Add(rowsViewport);content.Children.Add(status);
         handle.MouseEnter+=delegate {hovering=true;enterAt=DateTime.UtcNow;};
         handle.MouseLeave+=delegate {hovering=false;leaveAt=DateTime.UtcNow;};
@@ -97,17 +120,24 @@ public sealed class QuotaSidebar : IDisposable {
     }
     public void Update(List<QuotaReading> value) {if(disposed)return;readings=value;updated=DateTime.UtcNow;failure="";Draw();Place();}
     public void Fail(string message) {if(disposed)return;failure=message;Draw();Place();}
+    public void SetWorking(bool value) {working=value;if(!value)AnimateMouth();}
     QuotaReading Primary() {return readings.Where(x=>x.Minutes==300&&x.ResetUtc>DateTime.UtcNow).OrderBy(x=>x.Bucket=="codex"?0:1).ThenBy(x=>x.Remaining).FirstOrDefault();}
     string PercentText() {return String.Concat(percent.Inlines.OfType<System.Windows.Documents.Run>().Select(x=>x.Text));}
     public void Expand() {if(disposed||!visible())return;Draw();Place();if(!canShowHandle)return;if(!handle.IsVisible)handle.Show();if(canPlace)popup.Show();leaveAt=DateTime.UtcNow;}
     void Tick() {
         if(disposed)return;
+        AnimateMouth();
         if(!visible()){handle.Hide();popup.Hide();return;}
         Place();if(!canShowHandle){handle.Hide();popup.Hide();return;}if(!handle.IsVisible)handle.Show();
         if(hovering!=handle.IsMouseOver){hovering=handle.IsMouseOver;if(hovering)enterAt=DateTime.UtcNow;else leaveAt=DateTime.UtcNow;}
         if(hovering&&!dragStart.HasValue&&!popup.IsVisible&&(DateTime.UtcNow-enterAt).TotalMilliseconds>=200)Expand();
         if(popup.IsVisible&&!pinned&&!handle.IsMouseOver&&!popup.IsMouseOver&&(DateTime.UtcNow-leaveAt).TotalMilliseconds>650)popup.Hide();
         if((DateTime.UtcNow-lastDraw).TotalSeconds>=5){Draw();Place();}
+    }
+    void AnimateMouth() {
+        double open=working?2+7*Math.Abs(Math.Sin(DateTime.UtcNow.TimeOfDay.TotalMilliseconds/170.0)):3;
+        mouth.Height=open;mouth.Margin=new Thickness(0,19-(open-3)/2,0,0);
+        mouth.Background=new LinearGradientBrush(Color.FromRgb(20,10,57),Color.FromRgb(63,24,117),90);
     }
     public static Rect FindSpace(Rect area,Size size,Point preferred,Rect[] avoid,Rect previous) {
         if(size.Width>area.Width||size.Height>area.Height)return Rect.Empty;
@@ -161,7 +191,7 @@ public sealed class QuotaSidebar : IDisposable {
         shell.Visibility=edge?Visibility.Visible:Visibility.Collapsed;
         percent.FontFamily=new FontFamily("Segoe UI");percent.FontSize=edge?11:14;
         percent.Effect=edge?null:new System.Windows.Media.Effects.DropShadowEffect {Color=Color.FromRgb(14,19,42),BlurRadius=3,ShadowDepth=0,Opacity=1};
-        bean.Effect=edge?null:new System.Windows.Media.Effects.DropShadowEffect {Color=Color.FromRgb(14,19,42),BlurRadius=3,ShadowDepth=1,Opacity=.45};
+        bean.Effect=edge?null:new System.Windows.Media.Effects.DropShadowEffect {Color=Color.FromRgb(102,92,255),BlurRadius=8,ShadowDepth=0,Opacity=.75};
         shell.Data=edge?Geometry.Parse("M40,0 C40,15 3,15 3,35 L3,73 C3,93 40,93 40,108 Z"):new RectangleGeometry(new Rect(1,1,38,62),18,18);
         body.Margin=new Thickness(edge?5:0,0,0,0);body.Children.Clear();
         face.Margin=new Thickness(0,edge?0:4,0,edge?4:0);
@@ -179,13 +209,13 @@ public sealed class QuotaSidebar : IDisposable {
         }
         if(!right)geometry.Transform=new MatrixTransform(-1,0,0,1,306,0);outline.Data=geometry;content.Margin=right?new Thickness(17,14,29,14):new Thickness(29,14,17,14);
     }
-    static TextBlock Text(string text,int size=12) {return new TextBlock {Text=text,FontSize=size,Foreground=Brushes.White,TextWrapping=TextWrapping.Wrap};}
+    static TextBlock Text(string text,int size=12) {return new TextBlock {Text=text,FontSize=size,Foreground=size>=11?Accent():new SolidColorBrush(Color.FromRgb(197,224,255)),TextWrapping=TextWrapping.Wrap};}
     void Draw() {
         lastDraw=DateTime.UtcNow;rows.Children.Clear();var primary=enabled()?Primary():null;
         bool stale=failure.Length>0||(updated!=DateTime.MinValue&&(DateTime.UtcNow-updated).TotalMinutes>3);
         percent.Inlines.Clear();percent.Inlines.Add(new System.Windows.Documents.Run(primary==null?"—":primary.Remaining.ToString("0.#")));
         if(primary!=null)percent.Inlines.Add(new System.Windows.Documents.Run("%") {FontSize=8,Foreground=new SolidColorBrush(Color.FromRgb(207,224,255))});
-        bean.Fill=new SolidColorBrush(primary==null?Color.FromRgb(178,188,217):QuotaColor(primary.Remaining));
+        bean.Fill=BeanBrush(primary==null?(double?)null:primary.Remaining);
         bean.Opacity=stale ? .6 : 1;percent.Opacity=stale ? .65 : 1;
         var values=enabled()?readings.OrderBy(x=>x.Bucket=="codex"?0:1).ThenBy(x=>x.Bucket).ThenBy(x=>x.Minutes).ToList():new List<QuotaReading>();
         foreach(var q in values) {
@@ -194,7 +224,7 @@ public sealed class QuotaSidebar : IDisposable {
             line.Children.Add(Text((q.Bucket=="codex"?"":q.Bucket+" · ")+(q.Minutes==300?"5 小时":"每周")));rows.Children.Add(line);
             var track=new Grid {Height=4,Margin=new Thickness(0,7,0,5),Background=new SolidColorBrush(Color.FromArgb(65,211,218,255))};
             track.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(expired?0:q.Remaining,GridUnitType.Star)});track.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(expired?100:100-q.Remaining,GridUnitType.Star)});
-            track.Children.Add(new Border {Background=new SolidColorBrush(QuotaColor(q.Remaining)),CornerRadius=new CornerRadius(2)});rows.Children.Add(track);
+            track.Children.Add(new Border {Background=q.Remaining>=20&&q.Remaining<60?BeanBrush(q.Remaining):new SolidColorBrush(QuotaColor(q.Remaining)),CornerRadius=new CornerRadius(2)});rows.Children.Add(track);
             var until=q.ResetUtc-DateTime.UtcNow;
             var reset=Text(expired?"已到重置时间，等待查询":q.Minutes==300?((int)until.TotalHours+"小时"+until.Minutes+"分后重置"):q.ResetUtc.ToLocalTime().ToString("MM-dd HH:mm")+" 重置",10);
             reset.Opacity=.75;reset.Margin=new Thickness(0,0,0,13);rows.Children.Add(reset);
@@ -209,6 +239,8 @@ public sealed class QuotaSidebar : IDisposable {
         using(var follower=new QuotaSidebar(()=>true,()=>true,.45,null,(a,b)=>{},false,()=>new[]{petBounds},false,()=>petBounds)) {
             follower.Update(new List<QuotaReading>{new QuotaReading {Bucket="codex",Minutes=300,Remaining=68,ResetUtc=DateTime.UtcNow.AddHours(1)}});
             if(follower.shell.Visibility!=Visibility.Collapsed||follower.PercentText()!="68%")throw new Exception("borderless follower label");
+            if(!(follower.bean.Fill is RadialGradientBrush)||follower.mouth.Height!=3)throw new Exception("hacker bean style");
+            follower.SetWorking(true);double closed=follower.mouth.Height;System.Threading.Thread.Sleep(80);follower.AnimateMouth();if(Math.Abs(follower.mouth.Height-closed)<.1)throw new Exception("working mouth did not animate");follower.SetWorking(false);
             if(follower.docked||follower.handle.Height!=64||follower.handle.Left>=petBounds.Left||Math.Abs(follower.handle.Top+64-petBounds.Bottom-4)>1||follower.body.Children[0]!=follower.percent)throw new Exception("companion lower-left placement / label order");
             var leftProperty=System.ComponentModel.DependencyPropertyDescriptor.FromProperty(Window.LeftProperty,typeof(Window));
             var topProperty=System.ComponentModel.DependencyPropertyDescriptor.FromProperty(Window.TopProperty,typeof(Window));
