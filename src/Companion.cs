@@ -42,7 +42,7 @@ public partial class PetWindow {
     readonly StackPanel replies=new StackPanel { Orientation=Orientation.Vertical,Margin=new Thickness(0,6,0,0) };
     readonly DispatcherTimer companionTimer=new DispatcherTimer();
     readonly UseClock useClock=new UseClock();
-    readonly Border keyboard=new Border { Width=112,Height=32,CornerRadius=new CornerRadius(5),Background=new SolidColorBrush(Color.FromArgb(220,45,25,82)),BorderBrush=Brushes.MediumPurple,BorderThickness=new Thickness(1),VerticalAlignment=VerticalAlignment.Bottom,HorizontalAlignment=HorizontalAlignment.Center,Margin=new Thickness(0,0,0,82),IsHitTestVisible=false,Visibility=Visibility.Collapsed };
+    readonly Border keyboard=new Border { Width=112,Height=32,CornerRadius=new CornerRadius(5),Background=new SolidColorBrush(Color.FromArgb(220,45,25,82)),BorderBrush=Brushes.MediumPurple,BorderThickness=new Thickness(1),VerticalAlignment=VerticalAlignment.Bottom,HorizontalAlignment=HorizontalAlignment.Center,Margin=new Thickness(0,0,0,78),IsHitTestVisible=false,Visibility=Visibility.Collapsed };
     readonly List<System.Windows.Shapes.Rectangle> keyLights=new List<System.Windows.Shapes.Rectangle>();
 
     ActivityPulse activityPulse;
@@ -181,7 +181,7 @@ public partial class PetWindow {
             }
         }
     }
-    static Thickness KeyboardPlacement(double size) {return new Thickness(0,0,0,Math.Max(82,size*.4+10));}
+    static Thickness KeyboardPlacement(double size) {return new Thickness(0,0,0,Math.Max(78,size*.4+8));}
     void AddCompanionSettings(Panel panel) {
         Action<string,bool,Action<bool>> toggle=(label,value,change)=> { var box=new CheckBox { Content=label,IsChecked=value,Margin=new Thickness(0,0,0,10) };box.Click+=delegate { change(box.IsChecked==true);Save(); };panel.Children.Add(box); };
         toggle("连续使用电脑后提醒喝水、活动",prefs.BreakReminders,v=>prefs.BreakReminders=v);
@@ -202,7 +202,7 @@ public partial class PetWindow {
         var restoredInvite=inviteJson.Deserialize<Preferences>(inviteJson.Serialize(savedInvite));
         if(InvitationReady(invitationTime,restoredInvite.NextInviteUtc,0))throw new Exception("invitation cooldown lost after reload");
         var clock=new UseClock();clock.Sample(0,0);clock.Sample(10,0);clock.Sample(20,65);if(clock.ActiveSeconds!=10)throw new Exception("idle counted as active");clock.Sample(30,300);if(clock.ActiveSeconds!=0)throw new Exception("break did not reset");clock.Sample(40,0);clock.Sample(600,0);if(clock.ActiveSeconds!=0)throw new Exception("suspend counted as use");
-        foreach(double size in new[]{160.0,300.0,600.0}) {var placement=KeyboardPlacement(size);if(placement.Left!=0||placement.Right!=0||placement.Bottom<82||placement.Bottom<size*.4)throw new Exception("keyboard placement failed at "+size);}
+        foreach(double size in new[]{160.0,300.0,600.0}) {var placement=KeyboardPlacement(size);if(placement.Left!=0||placement.Right!=0||placement.Bottom<78||placement.Bottom<size*.4)throw new Exception("keyboard placement failed at "+size);}
         Prompt("测试提醒","test",4);if(replies.Children.Count!=3||!bubble.IsHitTestVisible)throw new Exception("reply controls missing");
         ((Button)replies.Children[1]).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));if(prefs.Deferred.Count!=1||prefs.Deferred[0].AtUtc<DateTime.UtcNow.AddMinutes(9))throw new Exception("snooze failed");
         bubble.Visibility=Visibility.Collapsed;Prompt("测试提醒","test",4);((Button)replies.Children[2]).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));if(!Muted("test")||prefs.Deferred.Count!=0)throw new Exception("day mute failed");
