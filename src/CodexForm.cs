@@ -2,28 +2,32 @@ using System;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace SilverWolfPet {
 public partial class PetWindow {
     BitmapSource[] codexFrames;
-    bool codexFormWorking,codexTaskRunning;
+    bool codexFormWorking,codexTaskRunning,codexActivationAnnounced;
     double codexLastTaskEnd=Double.PositiveInfinity,codexFormStart=-100,codexFormEnd=-100;
     readonly Image cutin=new Image { IsHitTestVisible=false,Stretch=Stretch.Uniform,Opacity=0,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Bottom };
     readonly TranslateTransform cutinMove=new TranslateTransform();
+    readonly Popup cutinPopup=new Popup { AllowsTransparency=true,StaysOpen=true,IsHitTestVisible=false,Placement=PlacementMode.Absolute };
+    readonly Canvas cutinCanvas=new Canvas { IsHitTestVisible=false };
     static BitmapSource ReadFormImage(string path) {
         var image=new BitmapImage();image.BeginInit();image.UriSource=new Uri(path);image.CacheOption=BitmapCacheOption.OnLoad;image.EndInit();image.Freeze();return image;
     }
     void LoadCodexForm(string root) {
         string dir=Path.Combine(root,"assets","codex-mode");
-        var sheet=ReadFormImage(Path.Combine(dir,"transform-v4-keyframes.png"));
-        var cross=new CroppedBitmap(sheet,new Int32Rect(0,350,512,340));
+        var cross=ReadFormImage(Path.Combine(dir,"cross-original-action.png"));
         var daily=BodyBounds(pack.Base);
         double height=daily.Height*800/pack.Base.PixelHeight,feet=daily.Bottom*800/pack.Base.PixelHeight;
-        codexFrames=new[]{pack.Base,RegisterForm(cross,height,feet),RegisterForm(ReadFormImage(Path.Combine(dir,"invincible-original-style.png")),height,feet)};
-        cutin.Source=ReadFormImage(Path.Combine(dir,"ultimate-cutin.jpg"));cutin.RenderTransform=cutinMove;
-        Panel.SetZIndex(cutin,30);Scene.Children.Add(cutin);
+        codexFrames=new[]{pack.Base,RegisterForm(cross,height,feet),RegisterForm(ReadFormImage(Path.Combine(dir,"invincible-clean-foot.png")),height,feet)};
+        cutin.Source=ReadFormImage(Path.Combine(dir,"ultimate-cutin-transparent.png"));cutin.RenderTransform=cutinMove;
+        cutinCanvas.Children.Add(cutin);cutinPopup.Child=cutinCanvas;
+        Closing+=delegate {cutinPopup.IsOpen=false;};
+        IsVisibleChanged+=delegate {if(!IsVisible)cutinPopup.IsOpen=false;};
     }
     static Rect BodyBounds(BitmapSource source) {
         var converted=new FormatConvertedBitmap(source,PixelFormats.Bgra32,null,0);
@@ -44,11 +48,11 @@ public partial class PetWindow {
         codexTaskRunning=working;
         if(working) {
             codexLastTaskEnd=Double.PositiveInfinity;
-            if(!codexFormWorking){codexFormWorking=true;codexFormStart=elapsed.Elapsed.TotalSeconds;Enter("idle");ScheduleIdle(elapsed.Elapsed.TotalSeconds);}
+            if(!codexFormWorking){codexFormWorking=true;codexActivationAnnounced=false;codexFormStart=elapsed.Elapsed.TotalSeconds;Enter("idle");ScheduleIdle(elapsed.Elapsed.TotalSeconds);}
         } else codexLastTaskEnd=elapsed.Elapsed.TotalSeconds;
     }
     void ExitCodexForm() {
-        codexFormWorking=false;codexFormEnd=-100;cutin.Opacity=0;
+        codexFormWorking=false;codexActivationAnnounced=false;codexFormEnd=-100;cutin.Opacity=0;cutinPopup.IsOpen=false;
         Enter("idle");SetFrame(pack.Base);previous.Source=null;previous.Opacity=0;pet.Opacity=1;ScheduleIdle(elapsed.Elapsed.TotalSeconds);
         // Keep actual task state: repeated true updates cannot immediately re-enter.
     }
@@ -58,6 +62,8 @@ public partial class PetWindow {
     }
     BitmapSource CodexFormFrame(double now,BitmapSource daily) {
         cutin.Opacity=0;
+        bool showCutin=codexFormWorking&&now-codexFormStart>=.55&&now-codexFormStart<1.65;
+        if(!showCutin)cutinPopup.IsOpen=false;
         if(codexFrames==null||!String.IsNullOrEmpty(prefs.PackPath))return daily;
         if(codexFormWorking&&!codexTaskRunning&&now-codexLastTaskEnd>=600)ExitCodexForm();
         if(!codexFormWorking)return daily;
@@ -65,20 +71,38 @@ public partial class PetWindow {
         if(t>=.55&&t<1.65) {
             double p=Bound((t-.55)/.32,0,1),q=Bound((t-1.25)/.4,0,1);
             double ease=p*p*(3-2*p),outEase=q*q*(3-2*q);
-            cutin.Width=Math.Min(420,Width-12);cutin.Height=cutin.Width*.91;cutin.Margin=new Thickness(0,0,0,18);
+            var art=(BitmapSource)cutin.Source;
+            var area=System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point((int)((Left+Width/2)*dpiX),(int)((PetTop+70+prefs.Size/2)*dpiY))).WorkingArea;
+            double maxW=area.Width/dpiX,maxH=area.Height/dpiY;
+            cutin.Height=Math.Min(prefs.Size*2.15,Math.Min(maxH-40,(maxW-90)*art.PixelHeight/art.PixelWidth));
+            cutin.Width=cutin.Height*art.PixelWidth/art.PixelHeight;cutin.Margin=new Thickness(0);
+            Canvas.SetLeft(cutin,40);Canvas.SetTop(cutin,16);cutinCanvas.Width=cutin.Width+80;cutinCanvas.Height=cutin.Height+32;
+            // Anchor on the character's torso, not the bottom starburst ray.
+            cutinPopup.HorizontalOffset=Bound(Left+Width/2-(40+cutin.Width*.53),area.Left/dpiX,area.Right/dpiX-cutinCanvas.Width);
+            cutinPopup.VerticalOffset=Bound(PetTop+70+prefs.Size*.52-(16+cutin.Height*.52),area.Top/dpiY,area.Bottom/dpiY-cutinCanvas.Height);
             cutinMove.X=(1-ease)*32-outEase*18;cutin.Opacity=ease*(1-outEase);
+            if(!testing&&IsVisible)cutinPopup.IsOpen=true;
         }
         if(t<.18)return pack.Base;
         if(t<1.12)return codexFrames[1];
+        if(t>=1.65&&!codexActivationAnnounced) {
+            codexActivationAnnounced=true;
+            Say("无敌玩家，启动！",4,4);
+        }
         return codexFrames[2];
     }
     void TestCodexForm(string root) {
+        var artCheck=new FormatConvertedBitmap((BitmapSource)cutin.Source,PixelFormats.Bgra32,null,0);
+        byte[] artPixels=new byte[artCheck.PixelWidth*artCheck.PixelHeight*4];artCheck.CopyPixels(artPixels,artCheck.PixelWidth*4,0);
+        int clear=0;for(int i=3;i<artPixels.Length;i+=4)if(artPixels[i]<10)clear++;
+        if(clear<artCheck.PixelWidth*artCheck.PixelHeight/5)throw new Exception("Cutin background is not transparent");
         if(codexFrames==null||codexFrames.Length!=3||!Object.ReferenceEquals(codexFrames[0],pack.Base))throw new Exception("Original daily frame not preserved");
         if(codexFormWorking)throw new Exception("Started in work form without event");
         SetCodexForm(true);double start=codexFormStart;
         if(CodexFormFrame(start+.3,pack.Base)!=codexFrames[1])throw new Exception("Cross pose missing");
         CodexFormFrame(start+.95,pack.Base);if(cutin.Opacity<.9)throw new Exception("Cutin missing");
-        if(CodexFormFrame(start+2,pack.Base)!=codexFrames[2]||cutin.Opacity!=0)throw new Exception("Final form missing");
+        if(CodexFormFrame(start+2,pack.Base)!=codexFrames[2]||cutin.Opacity!=0||words.Text!="无敌玩家，启动！")throw new Exception("Final form announcement missing");
+        double announcedUntil=bubbleUntil;CodexFormFrame(start+3,pack.Base);if(bubbleUntil!=announcedUntil)throw new Exception("Final form announcement repeated");
         SetCodexForm(false);double ended=codexLastTaskEnd;
         if(CodexFormFrame(ended+599,pack.Base)!=codexFrames[2])throw new Exception("Grace too short");
         SetCodexForm(true);if(start!=codexFormStart)throw new Exception("Repeated transform");
@@ -92,10 +116,20 @@ public partial class PetWindow {
         }
         var sample=new RenderTargetBitmap(760,240,96,96,PixelFormats.Pbgra32);sample.Render(visual);var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(sample));
         Directory.CreateDirectory(Path.Combine(root,"qa"));using(var f=File.Create(Path.Combine(root,"qa","forms-size-check.png")))png.Save(f);
+        var comparison=new DrawingVisual();using(var dc=comparison.RenderOpen()) {
+            dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(34,38,52)),null,new Rect(0,0,900,430));
+            for(int row=0;row<2;row++)for(int col=0;col<3;col++){
+                double size=row==0?160:180;BitmapSource frame=codexFrames[col];double w=size*frame.PixelWidth/frame.PixelHeight;
+                dc.DrawImage(frame,new Rect(col*300+(300-w)/2,row*210+15,w,size));
+            }
+        }
+        var compare=new RenderTargetBitmap(900,430,96,96,PixelFormats.Pbgra32);compare.Render(comparison);
+        var comparePng=new PngBitmapEncoder();comparePng.Frames.Add(BitmapFrame.Create(compare));using(var f=File.Create(Path.Combine(root,"qa","daily-cross-working.png")))comparePng.Save(f);
         SetCodexForm(true);bubble.Visibility=Visibility.Collapsed;BubbleSpace(0);
         SetFrame(CodexFormFrame(codexFormStart+.95,pack.Base));previous.Opacity=0;pet.Opacity=1;
         Scene.Measure(new Size(Width,Height));Scene.Arrange(new Rect(0,0,Width,Height));Scene.UpdateLayout();
-        var shot=new RenderTargetBitmap((int)Width,(int)Height,96,96,PixelFormats.Pbgra32);shot.Render(Scene);
+        cutinCanvas.Measure(new Size(cutinCanvas.Width,cutinCanvas.Height));cutinCanvas.Arrange(new Rect(0,0,cutinCanvas.Width,cutinCanvas.Height));cutinCanvas.UpdateLayout();
+        var shot=new RenderTargetBitmap((int)Math.Ceiling(cutinCanvas.Width),(int)Math.Ceiling(cutinCanvas.Height),96,96,PixelFormats.Pbgra32);shot.Render(cutinCanvas);
         var output=new PngBitmapEncoder();output.Frames.Add(BitmapFrame.Create(shot));using(var f=File.Create(Path.Combine(root,"qa","cutin.png")))output.Save(f);
         ExitCodexForm();SetCodexForm(false);
     }

@@ -265,7 +265,7 @@ public partial class PetWindow : Window {
         string warning=null;
         try { pack=LoadedPack.Load(String.IsNullOrEmpty(prefs.PackPath)?defaultPack:prefs.PackPath); }
         catch(Exception ex) { pack=LoadedPack.Load(defaultPack); prefs.PackPath=""; warning="自定义素材无法载入，已恢复默认形象。"; Debug.WriteLine(ex); }
-        Title="银狼 LV.999 桌宠 · 2.6.9 预览版"; WindowStyle=WindowStyle.None; ResizeMode=ResizeMode.NoResize;
+        Title="银狼 LV.999 桌宠 · 2.6.11 预览版"; WindowStyle=WindowStyle.None; ResizeMode=ResizeMode.NoResize;
         Icon=BitmapFrame.Create(new Uri(System.IO.Path.Combine(root,"assets","silver-wolf.ico")));
         AllowsTransparency=true; Background=Brushes.Transparent; ShowInTaskbar=false;ShowActivated=false; Topmost=prefs.Topmost;
         if(preview) { ShowInTaskbar=true; Title="银狼 LV.999 · 动作测试"; }
@@ -467,7 +467,10 @@ public partial class PetWindow : Window {
         SetFrame(CodexFormFrame(now,active!=null?active.At(t):pack.Base));
         // A short dissolve softens large key-pose changes; blink remains crisp.
         double blend=Bound((elapsed.Elapsed.TotalSeconds-frameChanged)/((codexFormWorking||now-codexFormEnd<.4)?.09:.075),0,1);
-        bool dissolve=now>touchFeedbackUntil&&state!="blink"&&previous.Source!=null&&blend<1;
+        // During keyboard input, blending two hand poses makes the fixed keyboard
+        // appear to jump between foreground and background. Keep one character
+        // frame visible while the keyboard overlay remains on its fixed layer.
+        bool dissolve=!inputAnimating&&now>touchFeedbackUntil&&state!="blink"&&previous.Source!=null&&blend<1;
         previous.Opacity=dissolve?1:0; pet.Opacity=dissolve?blend:1;
         scale.ScaleX=1; scale.ScaleY=1; rotate.Angle=0; shift.Y=0;
         if(state=="touchHead") { rotate.Angle=-3;scale.ScaleY=.99; }
@@ -498,7 +501,7 @@ public partial class PetWindow : Window {
     void ShowSidebar() { prefs.SidebarEnabled=true;Save();if(sidebar!=null)sidebar.Expand(); }
     void CreateTray() {
         trayIcon=new System.Drawing.Icon(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"assets","silver-wolf.ico"),Forms.SystemInformation.SmallIconSize);
-        tray=new Forms.NotifyIcon { Icon=trayIcon, Text="银狼 LV.999 · v2.6.9 预览版 · 双击找回桌宠", Visible=true };
+        tray=new Forms.NotifyIcon { Icon=trayIcon, Text="银狼 LV.999 · v2.6.11 预览版 · 双击找回桌宠", Visible=true };
         var menu=new Forms.ContextMenuStrip();
         menu.Items.Add("显示 / 找回桌宠",null,delegate { Dispatcher.Invoke(new Action(Recover)); });
         menu.Items.Add("隐藏桌宠",null,delegate { Dispatcher.Invoke(new Action(HideManually)); });
@@ -515,7 +518,7 @@ public partial class PetWindow : Window {
         MenuItem(menu,"✦  " + (pack.Spec.name??"桌宠"),delegate { React(false); });
         MenuItem(menu,"互动一下",delegate { React(false); });
         if(codexFormWorking)MenuItem(menu,"退出无敌玩家状态",ExitCodexForm);
-        MenuItem(menu,"预览无敌玩家变身",delegate { if(codexFrames!=null){codexFormWorking=true;codexFormStart=elapsed.Elapsed.TotalSeconds;if(!codexTaskRunning)codexLastTaskEnd=elapsed.Elapsed.TotalSeconds-590;Enter("idle");} });
+        MenuItem(menu,"预览无敌玩家变身",delegate { if(codexFrames!=null){codexFormWorking=true;codexActivationAnnounced=false;codexFormStart=elapsed.Elapsed.TotalSeconds;if(!codexTaskRunning)codexLastTaskEnd=elapsed.Elapsed.TotalSeconds-590;Enter("idle");} });
         MenuItem(menu,prefs.SidebarEnabled?"隐藏额度终端":"显示额度终端",ToggleSidebar);
         var actions=new System.Windows.Controls.MenuItem { Header="动作预览" };
         string[] actionKeys={"headpat","annoyed","drag","yawn","stretch","game","rhythm"};
@@ -536,7 +539,7 @@ public partial class PetWindow : Window {
         settings=new Window { Title="银狼 LV.999 · 设置", Width=410, Height=640, ResizeMode=ResizeMode.NoResize, WindowStartupLocation=WindowStartupLocation.CenterScreen, Background=new SolidColorBrush(Color.FromRgb(245,243,252)), Topmost=true };
         ThemeWindow(settings);
         var panel=new StackPanel { Margin=new Thickness(24) }; settings.Content=new ScrollViewer { Content=panel, VerticalScrollBarVisibility=ScrollBarVisibility.Auto };
-        panel.Children.Add(new TextBlock { Text="PLAYER SETTINGS  /  2.6.9 预览版", FontSize=20, FontWeight=FontWeights.Bold, Foreground=new SolidColorBrush(Color.FromRgb(76,54,136)) });
+        panel.Children.Add(new TextBlock { Text="PLAYER SETTINGS  /  2.6.11 预览版", FontSize=20, FontWeight=FontWeights.Bold, Foreground=new SolidColorBrush(Color.FromRgb(76,54,136)) });
         var packLabel=new TextBlock { Text="当前形象："+(pack.Spec.name??"自定义"), Margin=new Thickness(0,12,0,16) }; panel.Children.Add(packLabel);
         panel.Children.Add(new TextBlock { Text="桌宠大小（也可在角色上滚动鼠标滚轮）" });
         var slider=new Slider { Minimum=160, Maximum=600, Value=prefs.Size, Margin=new Thickness(0,8,0,16), TickFrequency=20, IsSnapToTickEnabled=true }; slider.ValueChanged+=delegate { ResizePet(slider.Value); }; panel.Children.Add(slider);
@@ -725,7 +728,7 @@ public static class Program {
         try {
             bool created;
             using(var mutex=new System.Threading.Mutex(true,test?"Local\\SilverWolfPet.Test":preview?"Local\\SilverWolfPet.Preview":"Local\\SilverWolfPet.Desktop",out created)) {
-                if(!created) { if(!autoStart)MessageBox.Show("已有桌宠在运行。若要升级，请先在旧版托盘菜单点击退出，再启动 v2.6.9 预览版。","银狼 LV.999"); return 0; }
+                if(!created) { if(!autoStart)MessageBox.Show("已有桌宠在运行。若要升级，请先在旧版托盘菜单点击退出，再启动 v2.6.11 预览版。","银狼 LV.999"); return 0; }
                 var app=new Application { ShutdownMode=ShutdownMode.OnMainWindowClose };
                 var window=new PetWindow(root,test,preview); app.MainWindow=window;
                 if(test) { window.SelfTest(root); window.Close(); return 0; }

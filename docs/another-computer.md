@@ -2,7 +2,7 @@
 
 ## 直接运行
 
-取得 `SilverWolfPet-v2.6.9-preview-Windows-x64.zip` 便携包后，完整解压并运行 `SilverWolfPet.exe`。不要单独移动程序，`assets` 文件夹必须与程序放在一起。若仓库没有提供便携包，可按下方步骤从源码构建。
+取得 `SilverWolfPet-v2.6.11-preview-Windows-x64.zip` 便携包后，完整解压并运行 `SilverWolfPet.exe`。不要单独移动程序，`assets` 文件夹必须与程序放在一起。若仓库没有提供便携包，可按下方步骤从源码构建。
 
 如果电脑上已有旧版桌宠，先在托盘菜单退出旧版。
 
@@ -14,7 +14,7 @@
 .\build.ps1
 ```
 
-构建依赖 Windows 的 64 位 .NET Framework 4.x 编译器与 WPF 组件。输出位于 `dist/SilverWolfPet-v2.6.9-preview/`，启动其中的 `SilverWolfPet.exe`。
+构建依赖 Windows 的 64 位 .NET Framework 4.x 编译器与 WPF 组件。输出位于 `dist/SilverWolfPet-v2.6.11-preview/`，启动其中的 `SilverWolfPet.exe`。
 
 ## 新电脑需要重新设置的内容
 

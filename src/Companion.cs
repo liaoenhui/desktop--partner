@@ -98,7 +98,12 @@ public partial class PetWindow {
         if(!testing&&prefs.InputReaction)activityPulse=new ActivityPulse();
         var grid=new System.Windows.Controls.Primitives.UniformGrid { Rows=2,Columns=8,Margin=new Thickness(5) };
         for(int i=0;i<16;i++) { var key=new System.Windows.Shapes.Rectangle { Margin=new Thickness(1),RadiusX=1,RadiusY=1,Fill=Brushes.MediumPurple };keyLights.Add(key);grid.Children.Add(key); }
-        keyboard.Child=grid;Scene.Children.Insert(2,keyboard);
+        keyboard.Child=grid;Scene.Children.Add(keyboard);
+        // Keep every visual layer deterministic while the character frames change.
+        // The holographic keyboard always stays in front of both image layers, and
+        // the speech bubble always stays above the keyboard.
+        Panel.SetZIndex(previous,0);Panel.SetZIndex(pet,10);
+        Panel.SetZIndex(keyboard,20);Panel.SetZIndex(bubble,30);
         companionTimer.Interval=TimeSpan.FromMilliseconds(100);companionTimer.Tick+=delegate { CompanionTick(); };if(!testing)companionTimer.Start();
     }
     bool Muted(string category) { string day;return prefs.MutedDays.TryGetValue(category,out day)&&day==DateTime.Now.ToString("yyyy-MM-dd"); }
@@ -203,6 +208,8 @@ public partial class PetWindow {
         if(InvitationReady(invitationTime,restoredInvite.NextInviteUtc,0))throw new Exception("invitation cooldown lost after reload");
         var clock=new UseClock();clock.Sample(0,0);clock.Sample(10,0);clock.Sample(20,65);if(clock.ActiveSeconds!=10)throw new Exception("idle counted as active");clock.Sample(30,300);if(clock.ActiveSeconds!=0)throw new Exception("break did not reset");clock.Sample(40,0);clock.Sample(600,0);if(clock.ActiveSeconds!=0)throw new Exception("suspend counted as use");
         foreach(double size in new[]{160.0,300.0,600.0}) {var placement=KeyboardPlacement(size);if(placement.Left!=0||placement.Right!=0||placement.Bottom<78||placement.Bottom<size*.4)throw new Exception("keyboard placement failed at "+size);}
+        if(Panel.GetZIndex(keyboard)<=Panel.GetZIndex(pet)||Panel.GetZIndex(keyboard)<=Panel.GetZIndex(previous)||Panel.GetZIndex(bubble)<=Panel.GetZIndex(keyboard))throw new Exception("keyboard visual layer is unstable");
+        RenderKeyboardLayerCheck(root);
         Prompt("测试提醒","test",4);if(replies.Children.Count!=3||!bubble.IsHitTestVisible)throw new Exception("reply controls missing");
         ((Button)replies.Children[1]).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));if(prefs.Deferred.Count!=1||prefs.Deferred[0].AtUtc<DateTime.UtcNow.AddMinutes(9))throw new Exception("snooze failed");
         bubble.Visibility=Visibility.Collapsed;Prompt("测试提醒","test",4);((Button)replies.Children[2]).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));if(!Muted("test")||prefs.Deferred.Count!=0)throw new Exception("day mute failed");
@@ -211,6 +218,26 @@ public partial class PetWindow {
         var frame=new RenderTargetBitmap((int)Width*2,(int)Height*2,192,192,PixelFormats.Pbgra32);frame.Render(Scene);var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(frame));Directory.CreateDirectory(Path.Combine(root,"qa"));using(var file=File.Create(Path.Combine(root,"qa","replies.png")))png.Save(file);
         bubble.Visibility=Visibility.Collapsed;replies.Children.Clear();bubblePriority=0;BubbleSpace(0);
         isAway=true;Enter("sleep");Advance(stateStart+60);if(state!="sleep")throw new Exception("away sleep did not hold");isAway=false;Enter("idle");
+    }
+    void RenderKeyboardLayerCheck(string root) {
+        double savedSize=prefs.Size,savedLeft=Left,savedTop=Top;
+        bubble.Visibility=Visibility.Collapsed;BubbleSpace(0);ResizePet(160);
+        var sheet=new DrawingVisual();
+        using(var dc=sheet.RenderOpen()) {
+            dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(34,38,52)),null,new Rect(0,0,900,260));
+            double[] samples={.7,1.55,2.35};
+            for(int i=0;i<samples.Length;i++) {
+                inputAnimating=true;keyboard.Visibility=Visibility.Visible;keyboard.Margin=KeyboardPlacement(prefs.Size);
+                Enter("game");Advance(stateStart+samples[i]);previous.Opacity=0;pet.Opacity=1;
+                Scene.Measure(new Size(Width,Height));Scene.Arrange(new Rect(0,0,Width,Height));Scene.UpdateLayout();
+                var frame=new RenderTargetBitmap((int)Math.Ceiling(Width),(int)Math.Ceiling(Height),96,96,PixelFormats.Pbgra32);frame.Render(Scene);
+                dc.DrawImage(frame,new Rect(i*300+(300-Width)/2,0,Width,Height));
+            }
+        }
+        var output=new RenderTargetBitmap(900,260,96,96,PixelFormats.Pbgra32);output.Render(sheet);
+        var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(output));Directory.CreateDirectory(Path.Combine(root,"qa"));
+        using(var file=File.Create(Path.Combine(root,"qa","keyboard-layer.png")))png.Save(file);
+        inputAnimating=false;keyboard.Visibility=Visibility.Collapsed;ResizePet(savedSize);Left=savedLeft;Top=savedTop;Enter("idle");previous.Opacity=0;pet.Opacity=1;
     }
     void BubblePositionTests() {
         bubble.Visibility=Visibility.Collapsed;BubbleSpace(0);

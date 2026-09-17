@@ -1,6 +1,14 @@
+## 2.6.11 键盘层级与变身台词修正
+
+常态键盘联动期间固定绘制顺序为角色过渡层、角色主层、全息键盘、聊天气泡，并关闭角色动作帧的淡入叠层，避免键盘在人物前后闪烁。无敌玩家变身的立绘淡出后，单次弹出“无敌玩家，启动！”，同一次变身不会重复提示。
+
+## 2.6.10 素材与立绘修正
+
+十字交叉帧重新以默认 reactions 素材制作；透明立绘完整显示在独立浮层，以人物躯干中心定位，靠屏幕边缘时优先确保特效不出屏。清理右脚鞋底下多余黑色尖块。验证了 160/180 两档三种姿势并排效果、透明通道、立绘完整性及任务状态回归。
+
 ## 下载即用（Windows 10/11 x64）
 
-[下载最新版 2.6.9 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.9-preview-Windows-x64.zip)
+[下载最新版 2.6.11 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.11-preview-Windows-x64.zip)
 
 无需编译或安装依赖。下载后完整解压，双击 SilverWolfPet.exe 即可运行。已有旧版时先从托盘退出；保留同目录 assets 文件夹。当前为变身功能试用版。
 
