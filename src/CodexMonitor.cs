@@ -189,10 +189,15 @@ public sealed class CodexMonitor : IDisposable {
             string file=pair.Key;var pendingCompletion=pair.Value;
             if(now<pendingCompletion.ReadyUtc)continue;
             try {if(File.Exists(file)&&(now-File.GetLastWriteTimeUtc(file)).TotalSeconds<3) {pendingCompletion.ReadyUtc=now.AddSeconds(3);continue;}}catch { }
-            string current;if(active.TryGetValue(file,out current)&&(pendingCompletion.Id=="current"||current==pendingCompletion.Id))active.Remove(file);
+            bool endedActive=false;string current;
+            if(active.TryGetValue(file,out current)&&(pendingCompletion.Id=="current"||current==pendingCompletion.Id)) {active.Remove(file);endedActive=true;}
             pendingCompletions.Remove(file);
             if(!completed.Add(file+"/"+pendingCompletion.Id)||!pendingCompletion.Notify||!TasksEnabled)continue;
-            if(TaskState!=null)TaskState("completed");
+            // The pet represents all local Codex work as one working form. A short
+            // parallel task finishing must not replace another task's live pose
+            // with the completed animation. Publish completion only when the last
+            // tracked task has ended.
+            if(endedActive&&!active.Any()&&TaskState!=null)TaskState("completed");
             string name=Path.GetFileNameWithoutExtension(file);name=name.Length>36?name.Substring(name.Length-36):name;
             Alert("Codex 任务运行结束","本轮运行结束，去看看战利品吧。\n任务尾号 "+name.Substring(Math.Max(0,name.Length-8))+" · 请在 Codex 验收结果");
         }
@@ -276,6 +281,14 @@ public sealed class CodexMonitor : IDisposable {
             monitor.pendingCompletions[log].ReadyUtc=DateTime.UtcNow.AddSeconds(-1);File.SetLastWriteTimeUtc(log,DateTime.UtcNow.AddSeconds(-5));monitor.FlushCompletions(DateTime.UtcNow);if(notices!=1||states.Last()||taskStates.Last()!="completed")throw new Exception("confirmed completion missing");
             File.AppendAllText(log,completion);monitor.Scan(false);if(notices!=1)throw new Exception("duplicate completion");
             File.AppendAllText(log,"{\"timestamp\":\""+DateTime.UtcNow.ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"muted\"}}\n");monitor.Scan(false);monitor.TasksEnabled=false;File.AppendAllText(log,record("muted",DateTime.UtcNow.ToString("o")));monitor.Scan(false);monitor.pendingCompletions[log].ReadyUtc=DateTime.UtcNow.AddSeconds(-1);File.SetLastWriteTimeUtc(log,DateTime.UtcNow.AddSeconds(-5));monitor.FlushCompletions(DateTime.UtcNow);monitor.TasksEnabled=true;if(notices!=1||states.Last())throw new Exception("muted completion replayed or working state stuck");
+            string parallelA=Path.Combine(fixture,"sessions","parallel-a.jsonl"),parallelB=Path.Combine(fixture,"sessions","parallel-b.jsonl");
+            File.WriteAllText(parallelA,"{\"timestamp\":\""+DateTime.UtcNow.ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"parallel-a\"}}\n");
+            File.WriteAllText(parallelB,"{\"timestamp\":\""+DateTime.UtcNow.ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"parallel-b\"}}\n");monitor.Scan(false);
+            int completedStates=taskStates.Count(x=>x=="completed");monitor.Notice=delegate { };
+            File.AppendAllText(parallelB,record("parallel-b",DateTime.UtcNow.ToString("o")));monitor.Scan(false);monitor.pendingCompletions[parallelB].ReadyUtc=DateTime.UtcNow.AddSeconds(-1);File.SetLastWriteTimeUtc(parallelB,DateTime.UtcNow.AddSeconds(-5));monitor.FlushCompletions(DateTime.UtcNow);
+            if(monitor.active.Count!=1||!monitor.active.ContainsKey(parallelA)||taskStates.Count(x=>x=="completed")!=completedStates||!states.Last())throw new Exception("parallel completion interrupted active work");
+            File.AppendAllText(parallelA,record("parallel-a",DateTime.UtcNow.ToString("o")));monitor.Scan(false);monitor.pendingCompletions[parallelA].ReadyUtc=DateTime.UtcNow.AddSeconds(-1);File.SetLastWriteTimeUtc(parallelA,DateTime.UtcNow.AddSeconds(-5));monitor.FlushCompletions(DateTime.UtcNow);
+            if(monitor.active.Count!=0||taskStates.Count(x=>x=="completed")!=completedStates+1||states.Last())throw new Exception("final parallel completion was not published");monitor.Notice=delegate { notices++; };
             File.WriteAllText(Path.Combine(fixture,"sessions","history.jsonl"),record("history",DateTime.UtcNow.AddHours(-1).ToString("o")));monitor.Scan(false);if(notices!=1)throw new Exception("imported history replayed");
             long reset=(long)(DateTime.UtcNow.AddHours(4)-new DateTime(1970,1,1,0,0,0,DateTimeKind.Utc)).TotalSeconds;
             Func<int,long,Dictionary<string,object>> rates=(used,at)=>Parse("{\"rateLimits\":{\"primary\":{\"usedPercent\":"+used+",\"windowDurationMins\":300,\"resetsAt\":"+at+"}}}");

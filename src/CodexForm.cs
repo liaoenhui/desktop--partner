@@ -251,7 +251,12 @@ public partial class PetWindow {
             string queued=codexIntroQueuedState;codexIntroQueuedState=null;
             if(queued!=codexWorkState)ApplyCodexWorkState(queued,now);
         }
-        if(!codexTaskRunning&&(codexWorkState=="completed"||codexWorkState=="failed")&&codexResultUntil>0&&now>=codexResultUntil)EnterCodexIdle(now);
+        if((codexWorkState=="completed"||codexWorkState=="failed")&&codexResultUntil>0&&now>=codexResultUntil) {
+            // A result pose is always bounded. If a stale/intermediate result ever
+            // arrives while another task is still running, resume the work pose
+            // instead of holding the result until a later log event replaces it.
+            if(codexTaskRunning)ApplyCodexWorkState("thinking",now);else EnterCodexIdle(now);
+        }
         if(codexStateBubblePending&&t>=4.8)SayCodexWorkState();
         MaybeSayCodexThinking(now);
         MaybeSayCodexIdle(now);
@@ -316,7 +321,9 @@ public partial class PetWindow {
         if(codexWorkState!="executing"||codexPendingWorkState!="thinking")throw new Exception("Executing pose did not hold through quick edit completion");
         CodexFormFrame(operationStarted+3.4,pack.Base);if(codexWorkState!="executing")throw new Exception("Executing pose hold was too short");
         CodexFormFrame(operationStarted+3.6,pack.Base);if(codexWorkState!="thinking"||codexPendingWorkState!=null)throw new Exception("Delayed reasoning pose did not resume");
-        double failedAt=operationStarted+4;ApplyCodexWorkState("failed",failedAt);SetCodexForm(false);
+        double strayCompletedAt=operationStarted+4;ApplyCodexWorkState("completed",strayCompletedAt);
+        if(!codexWorkClips["thinking"].Frames.Contains(CodexFormFrame(strayCompletedAt+8.1,pack.Base))||codexWorkState!="thinking")throw new Exception("Intermediate completed pose remained while work was active");
+        double failedAt=strayCompletedAt+9;ApplyCodexWorkState("failed",failedAt);SetCodexForm(false);
         if(!codexWorkClips["failed"].Frames.Contains(CodexFormFrame(failedAt+7.9,pack.Base)))throw new Exception("Failed pose ended too early");
         if(CodexFormFrame(failedAt+8.1,pack.Base)!=codexFrames[2]||codexWorkState!="idle")throw new Exception("Failed pose did not return to work idle");
         TouchReaction(TouchZone.Head,"tap");if(state!="idle")throw new Exception("Work touch started normal action");
