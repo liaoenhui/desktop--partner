@@ -16,7 +16,7 @@ public partial class PetWindow {
     bool codexFormWorking,codexTaskRunning,codexActivationAnnounced,codexCutinVisible,codexIntroComplete=true;
     bool codexStateBubblePending,codexTimerBubble;
     string codexWorkState="thinking",codexPendingWorkState,codexIntroQueuedState;
-    double codexWorkStateStart,codexTaskStart,codexPendingWorkAt,nextCodexThinkingLine,codexTimerResumeAt,codexIntroRelease;
+    double codexWorkStateStart,codexTaskStart,codexPendingWorkAt,nextCodexThinkingLine,codexTimerResumeAt,codexIntroRelease,codexResultUntil,nextCodexIdleLine=Double.PositiveInfinity;
     int codexTimerShownSecond=-1;
     double codexLastTaskEnd=Double.PositiveInfinity,codexFormStart=-100,codexFormEnd=-100;
     readonly Image cutin=new Image { IsHitTestVisible=false,Stretch=Stretch.Uniform,Opacity=0,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Bottom };
@@ -65,7 +65,7 @@ public partial class PetWindow {
         if(working) {
             codexLastTaskEnd=Double.PositiveInfinity;
             double now=elapsed.Elapsed.TotalSeconds;bool entering=!codexFormWorking;
-            codexStateSpoken.Clear();codexStateBubblePending=false;codexTimerBubble=false;codexTimerShownSecond=-1;codexPendingWorkState=null;codexWorkState="thinking";codexTaskStart=codexWorkStateStart=now;nextCodexThinkingLine=codexTaskStart+14+random.NextDouble()*8;codexTimerResumeAt=0;
+            codexStateSpoken.Clear();codexStateBubblePending=false;codexTimerBubble=false;codexTimerShownSecond=-1;codexPendingWorkState=null;codexWorkState="thinking";codexTaskStart=codexWorkStateStart=now;nextCodexThinkingLine=codexTaskStart+14+random.NextDouble()*8;codexTimerResumeAt=0;codexResultUntil=0;nextCodexIdleLine=Double.PositiveInfinity;
             if(entering){codexFormWorking=true;codexActivationAnnounced=false;codexIntroComplete=false;codexIntroQueuedState="thinking";codexIntroRelease=0;codexFormStart=now;KeepAccessoriesOnScreen();Enter("idle");ScheduleIdle(now);}
             else {codexIntroComplete=true;codexIntroQueuedState=null;codexIntroRelease=0;}
         } else {
@@ -75,7 +75,7 @@ public partial class PetWindow {
         }
     }
     void ExitCodexForm() {
-        codexFormWorking=false;codexActivationAnnounced=false;codexCutinVisible=false;codexIntroComplete=true;codexIntroQueuedState=null;codexIntroRelease=0;codexStateBubblePending=false;codexTimerBubble=false;codexTimerShownSecond=-1;codexPendingWorkState=null;codexTimerResumeAt=0;codexFormEnd=-100;cutin.Opacity=0;cutinPopup.IsOpen=false;
+        codexFormWorking=false;codexActivationAnnounced=false;codexCutinVisible=false;codexIntroComplete=true;codexIntroQueuedState=null;codexIntroRelease=0;codexStateBubblePending=false;codexTimerBubble=false;codexTimerShownSecond=-1;codexPendingWorkState=null;codexTimerResumeAt=0;codexResultUntil=0;nextCodexIdleLine=Double.PositiveInfinity;codexFormEnd=-100;cutin.Opacity=0;cutinPopup.IsOpen=false;
         bubble.Visibility=Visibility.Collapsed;BubbleSpace(0);bubbleThemeWork=null;
         Enter("idle");SetFrame(pack.Base);previous.Source=null;previous.Opacity=0;pet.Opacity=1;ScheduleIdle(elapsed.Elapsed.TotalSeconds);
         // Keep actual task state: repeated true updates cannot immediately re-enter.
@@ -105,6 +105,8 @@ public partial class PetWindow {
     void ApplyCodexWorkState(string next,double now) {
         if(codexTimerBubble&&next!="executing") {bubble.Visibility=Visibility.Collapsed;BubbleSpace(0);}
         codexWorkState=next;codexWorkStateStart=now;codexTimerBubble=false;codexTimerShownSecond=-1;
+        if(next=="completed"||next=="failed") {codexResultUntil=now+8;nextCodexIdleLine=Double.PositiveInfinity;}
+        else if(next!="idle") {codexResultUntil=0;nextCodexIdleLine=Double.PositiveInfinity;}
         bool timed=next=="executing";codexStateBubblePending=next!="thinking"&&!timed&&!codexStateSpoken.Contains(next);
         if(codexFormWorking&&codexIntroComplete&&now>=codexIntroRelease) {if(timed)UpdateCodexTimerBubble(now);else SayCodexWorkState();}
     }
@@ -126,7 +128,7 @@ public partial class PetWindow {
     void UpdateCodexTimerBubble(double now) {
         if(!codexFormWorking||!codexTaskRunning||codexWorkState!="executing"||!codexIntroComplete||now<codexIntroRelease||now-codexFormStart<5.8||now<codexTimerResumeAt)return;
         int total=(int)Math.Max(0,Math.Floor(now-codexTaskStart));if(codexTimerBubble&&total==codexTimerShownSecond)return;
-        string message="任务运行计时中，当前用时"+(total/60).ToString("00")+"分"+(total%60).ToString("00")+"秒……别急。马上搞定咯。";
+        string message="任务运行计时中，\n当前用时"+(total/60).ToString("00")+"分"+(total%60).ToString("00")+"秒……\n别急。马上搞定咯。";
         if(!codexTimerBubble) {SayCodex(message,Double.PositiveInfinity,4);codexTimerBubble=words.Text==message;}
         // The fixed two-digit format keeps the bubble height stable, so the
         // once-per-second update only repaints text instead of remeasuring the window.
@@ -137,6 +139,17 @@ public partial class PetWindow {
         if(!codexFormWorking||!codexTaskRunning||codexWorkState!="thinking"||now-codexFormStart<5.8||now<nextCodexThinkingLine)return;
         string line=ChooseLine("codex-thinking",new[]{"正在推演最优路线……","让我看看，这一步还能怎么解。","别急，正在把线索拼起来。","嗯……这个关卡有点意思。","先算清楚，再一口气通关。","数据还在跑，很快就有答案。"});
         codexTimerBubble=false;codexTimerShownSecond=-1;nextCodexThinkingLine=now+30+random.NextDouble()*20;SayCodex(line,4.5,4);
+    }
+    void EnterCodexIdle(double now) {
+        codexWorkState="idle";codexWorkStateStart=now;codexPendingWorkState=null;codexStateBubblePending=false;codexTimerBubble=false;codexTimerShownSecond=-1;codexResultUntil=0;
+        if(bubble.Visibility==Visibility.Visible&&now>=bubbleUntil){bubble.Visibility=Visibility.Collapsed;BubbleSpace(0);}
+        nextCodexIdleLine=now+18+random.NextDouble()*10;
+    }
+    void MaybeSayCodexIdle(double now) {
+        if(!codexFormWorking||codexTaskRunning||codexWorkState!="idle"||now<nextCodexIdleLine)return;
+        if(bubble.Visibility==Visibility.Visible&&now<bubbleUntil){nextCodexIdleLine=now+12;return;}
+        string line=ChooseLine("codex-idle",new[]{"没有别的任务了吗？","下一关呢？我还没热身完。","任务列表空了？有点无聊。","随时开局，我还在线。","这就结束了？再来一轮。","想好了就叫我，别让我等太久。"});
+        nextCodexIdleLine=now+60+random.NextDouble()*40;SayCodex(line,4.5,2);
     }
     BitmapSource CodexFormFrame(double now,BitmapSource daily) {
         cutin.Opacity=0;
@@ -183,8 +196,10 @@ public partial class PetWindow {
             string queued=codexIntroQueuedState;codexIntroQueuedState=null;
             if(queued!=codexWorkState)ApplyCodexWorkState(queued,now);
         }
+        if(!codexTaskRunning&&(codexWorkState=="completed"||codexWorkState=="failed")&&codexResultUntil>0&&now>=codexResultUntil)EnterCodexIdle(now);
         if(codexStateBubblePending&&t>=4.8)SayCodexWorkState();
         MaybeSayCodexThinking(now);
+        MaybeSayCodexIdle(now);
         UpdateCodexTimerBubble(now);
         return CodexWorkFrame(now);
     }
@@ -207,7 +222,7 @@ public partial class PetWindow {
         if(!codexWorkClips["executing"].Frames.Contains(CodexFormFrame(start+7.2,pack.Base))||codexIntroQueuedState!=null||codexWorkState!="executing")throw new Exception("Queued operation did not follow thinking bridge");
         nextCodexThinkingLine=start+200;
         SetFrame(CodexFormFrame(start+65,pack.Base));previous.Opacity=0;pet.Opacity=1;
-        if(!codexTimerBubble||!Double.IsPositiveInfinity(bubbleUntil)||words.Text.IndexOf("01分05秒",StringComparison.Ordinal)<0||bubbleThemeWork!=true||bubbleTail.Visibility!=Visibility.Collapsed)throw new Exception("Persistent task timer or work bubble theme missing");
+        if(!codexTimerBubble||!Double.IsPositiveInfinity(bubbleUntil)||words.Text.IndexOf("01分05秒",StringComparison.Ordinal)<0||words.Text.Split('\n').Length!=3||bubble.Width>=210||bubbleThemeWork!=true||bubbleTail.Visibility!=Visibility.Collapsed)throw new Exception("Compact three-line task timer or work bubble theme missing");
         string timerText=words.Text;Say("挂机结束了？欢迎回来，轮到你操作了。",6,5);if(words.Text!=timerText)throw new Exception("Daily dialogue leaked into work form");
         Scene.Measure(new Size(Width,Height));Scene.Arrange(new Rect(0,0,Width,Height));Scene.UpdateLayout();
         var timerShot=new RenderTargetBitmap((int)Width*2,(int)Height*2,192,192,PixelFormats.Pbgra32);timerShot.Render(Scene);
@@ -216,8 +231,12 @@ public partial class PetWindow {
         nextCodexThinkingLine=start+66;CodexFormFrame(start+66,pack.Base);
         if(words.Text==timerText||codexTimerBubble||Double.IsPositiveInfinity(bubbleUntil))throw new Exception("Periodic thinking dialogue missing or persistent");
         CodexFormFrame(start+71,pack.Base);if(codexTimerBubble)throw new Exception("Thinking incorrectly restored the task timer");
-        SetCodexForm(false);double ended=codexLastTaskEnd;
-        if(!codexWorkClips["thinking"].Frames.Contains(CodexFormFrame(ended+599,pack.Base)))throw new Exception("Grace too short");
+        double completedAt=start+72;ApplyCodexWorkState("completed",completedAt);SetCodexForm(false);double ended=codexLastTaskEnd;
+        if(!codexWorkClips["completed"].Frames.Contains(CodexFormFrame(completedAt+7.9,pack.Base)))throw new Exception("Completed pose ended too early");
+        if(CodexFormFrame(completedAt+8.1,pack.Base)!=codexFrames[2]||codexWorkState!="idle")throw new Exception("Completed pose did not return to work idle");
+        nextCodexIdleLine=completedAt+8.2;CodexFormFrame(completedAt+8.2,pack.Base);
+        if(!lastSpoken.ContainsKey("codex-idle")||bubble.Visibility!=Visibility.Visible||Double.IsPositiveInfinity(bubbleUntil))throw new Exception("Work-idle random dialogue missing");
+        if(CodexFormFrame(ended+599,pack.Base)!=codexFrames[2])throw new Exception("Grace too short or work idle missing");
         SetCodexForm(true);if(start!=codexFormStart)throw new Exception("Repeated transform");
         ExitCodexForm();SetCodexForm(true);if(codexFormWorking)throw new Exception("Manual exit undone");
         SetCodexForm(false);SetCodexForm(true);if(!codexFormWorking)throw new Exception("New task failed");
@@ -226,6 +245,9 @@ public partial class PetWindow {
         if(codexWorkState!="executing"||codexPendingWorkState!="thinking")throw new Exception("Executing pose did not hold through quick edit completion");
         CodexFormFrame(operationStarted+3.4,pack.Base);if(codexWorkState!="executing")throw new Exception("Executing pose hold was too short");
         CodexFormFrame(operationStarted+3.6,pack.Base);if(codexWorkState!="thinking"||codexPendingWorkState!=null)throw new Exception("Delayed reasoning pose did not resume");
+        double failedAt=operationStarted+4;ApplyCodexWorkState("failed",failedAt);SetCodexForm(false);
+        if(!codexWorkClips["failed"].Frames.Contains(CodexFormFrame(failedAt+7.9,pack.Base)))throw new Exception("Failed pose ended too early");
+        if(CodexFormFrame(failedAt+8.1,pack.Base)!=codexFrames[2]||codexWorkState!="idle")throw new Exception("Failed pose did not return to work idle");
         TouchReaction(TouchZone.Head,"tap");if(state!="idle")throw new Exception("Work touch started normal action");
         SetCodexForm(false);ended=codexLastTaskEnd;CodexFormFrame(ended+601,pack.Base);if(codexFormWorking)throw new Exception("Grace did not expire");
         var visual=new DrawingVisual();using(var dc=visual.RenderOpen()) {
