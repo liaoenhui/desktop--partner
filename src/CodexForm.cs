@@ -9,7 +9,7 @@ using System.Windows.Media.Imaging;
 namespace SilverWolfPet {
 public partial class PetWindow {
     BitmapSource[] codexFrames;
-    bool codexFormWorking,codexTaskRunning,codexActivationAnnounced;
+    bool codexFormWorking,codexTaskRunning,codexActivationAnnounced,codexCutinVisible;
     double codexLastTaskEnd=Double.PositiveInfinity,codexFormStart=-100,codexFormEnd=-100;
     readonly Image cutin=new Image { IsHitTestVisible=false,Stretch=Stretch.Uniform,Opacity=0,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Bottom };
     readonly TranslateTransform cutinMove=new TranslateTransform();
@@ -52,7 +52,7 @@ public partial class PetWindow {
         } else codexLastTaskEnd=elapsed.Elapsed.TotalSeconds;
     }
     void ExitCodexForm() {
-        codexFormWorking=false;codexActivationAnnounced=false;codexFormEnd=-100;cutin.Opacity=0;cutinPopup.IsOpen=false;
+        codexFormWorking=false;codexActivationAnnounced=false;codexCutinVisible=false;codexFormEnd=-100;cutin.Opacity=0;cutinPopup.IsOpen=false;
         Enter("idle");SetFrame(pack.Base);previous.Source=null;previous.Opacity=0;pet.Opacity=1;ScheduleIdle(elapsed.Elapsed.TotalSeconds);
         // Keep actual task state: repeated true updates cannot immediately re-enter.
     }
@@ -60,9 +60,15 @@ public partial class PetWindow {
         if(!codexFormWorking)return false;
         Enter("idle");Say(ChooseLine("working-touch",new[]{"别碰我，在忙呢。","这关还没结束，等我一下。","别挡操作，满级玩家正在处理。"}),3,3);return true;
     }
+    void ApplyCodexCutinVisibility() {
+        if(!codexCutinVisible)return;
+        previous.Opacity=0;
+        pet.Opacity=0;
+    }
     BitmapSource CodexFormFrame(double now,BitmapSource daily) {
         cutin.Opacity=0;
         bool showCutin=codexFormWorking&&now-codexFormStart>=.55&&now-codexFormStart<1.65;
+        codexCutinVisible=showCutin;
         if(!showCutin)cutinPopup.IsOpen=false;
         if(codexFrames==null||!String.IsNullOrEmpty(prefs.PackPath))return daily;
         if(codexFormWorking&&!codexTaskRunning&&now-codexLastTaskEnd>=600)ExitCodexForm();
@@ -73,14 +79,16 @@ public partial class PetWindow {
             double ease=p*p*(3-2*p),outEase=q*q*(3-2*q);
             var art=(BitmapSource)cutin.Source;
             var area=System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point((int)((Left+Width/2)*dpiX),(int)((PetTop+70+prefs.Size/2)*dpiY))).WorkingArea;
-            double maxW=area.Width/dpiX,maxH=area.Height/dpiY;
-            cutin.Height=Math.Min(prefs.Size*2.15,Math.Min(maxH-40,(maxW-90)*art.PixelHeight/art.PixelWidth));
-            cutin.Width=cutin.Height*art.PixelWidth/art.PixelHeight;cutin.Margin=new Thickness(0);
-            Canvas.SetLeft(cutin,40);Canvas.SetTop(cutin,16);cutinCanvas.Width=cutin.Width+80;cutinCanvas.Height=cutin.Height+32;
-            // Anchor on the character's torso, not the bottom starburst ray.
-            cutinPopup.HorizontalOffset=Bound(Left+Width/2-(40+cutin.Width*.53),area.Left/dpiX,area.Right/dpiX-cutinCanvas.Width);
-            cutinPopup.VerticalOffset=Bound(PetTop+70+prefs.Size*.52-(16+cutin.Height*.52),area.Top/dpiY,area.Bottom/dpiY-cutinCanvas.Height);
-            cutinMove.X=(1-ease)*32-outEase*18;cutin.Opacity=ease*(1-outEase);
+            double maxW=area.Width/dpiX,maxH=area.Height/dpiY,desiredSide=prefs.Size*1.02;
+            double artScale=Math.Min(desiredSide/art.PixelWidth,desiredSide/art.PixelHeight);
+            artScale=Math.Min(artScale,Math.Min((maxW-48)/art.PixelWidth,(maxH-48)/art.PixelHeight));
+            cutin.Width=art.PixelWidth*artScale;cutin.Height=art.PixelHeight*artScale;cutin.Margin=new Thickness(0);
+            Canvas.SetLeft(cutin,16);Canvas.SetTop(cutin,16);cutinCanvas.Width=cutin.Width+32;cutinCanvas.Height=cutin.Height+32;
+            // Center the complete illustration on the pet. The artwork character is
+            // intentionally smaller because its background effects occupy most of it.
+            cutinPopup.HorizontalOffset=Bound(Left+Width/2-cutinCanvas.Width/2,area.Left/dpiX,area.Right/dpiX-cutinCanvas.Width);
+            cutinPopup.VerticalOffset=Bound(PetTop+70+prefs.Size/2-cutinCanvas.Height/2,area.Top/dpiY,area.Bottom/dpiY-cutinCanvas.Height);
+            cutinMove.X=(1-ease)*12-outEase*8;cutin.Opacity=ease*(1-outEase);
             if(!testing&&IsVisible)cutinPopup.IsOpen=true;
         }
         if(t<.18)return pack.Base;
@@ -100,8 +108,9 @@ public partial class PetWindow {
         if(codexFormWorking)throw new Exception("Started in work form without event");
         SetCodexForm(true);double start=codexFormStart;
         if(CodexFormFrame(start+.3,pack.Base)!=codexFrames[1])throw new Exception("Cross pose missing");
-        CodexFormFrame(start+.95,pack.Base);if(cutin.Opacity<.9)throw new Exception("Cutin missing");
-        if(CodexFormFrame(start+2,pack.Base)!=codexFrames[2]||cutin.Opacity!=0||words.Text!="无敌玩家，启动！")throw new Exception("Final form announcement missing");
+        CodexFormFrame(start+.95,pack.Base);pet.Opacity=previous.Opacity=1;ApplyCodexCutinVisibility();
+        if(cutin.Opacity<.9||!codexCutinVisible||pet.Opacity!=0||previous.Opacity!=0||Math.Max(cutin.Width,cutin.Height)>prefs.Size*1.021)throw new Exception("Cutin missing, oversized, or character still visible");
+        if(CodexFormFrame(start+2,pack.Base)!=codexFrames[2]||cutin.Opacity!=0||codexCutinVisible||words.Text!="无敌玩家，启动！")throw new Exception("Final form announcement missing");
         double announcedUntil=bubbleUntil;CodexFormFrame(start+3,pack.Base);if(bubbleUntil!=announcedUntil)throw new Exception("Final form announcement repeated");
         SetCodexForm(false);double ended=codexLastTaskEnd;
         if(CodexFormFrame(ended+599,pack.Base)!=codexFrames[2])throw new Exception("Grace too short");

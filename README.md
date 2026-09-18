@@ -1,3 +1,7 @@
+## 2.6.12 立绘比例与侧栏位置修正
+
+立绘出现时会完全隐藏桌宠角色层，避免两种形象叠加。立绘改为按照包含背景特效的完整画面缩放和居中，最大边约等于当前桌宠尺寸，不再按立绘中的人物高度放大。骇客豆跟随模式只用角色实际范围参与避让，修复悬浮额度面板被透明窗口边缘推到高处的问题。
+
 ## 2.6.11 键盘层级与变身台词修正
 
 常态键盘联动期间固定绘制顺序为角色过渡层、角色主层、全息键盘、聊天气泡，并关闭角色动作帧的淡入叠层，避免键盘在人物前后闪烁。无敌玩家变身的立绘淡出后，单次弹出“无敌玩家，启动！”，同一次变身不会重复提示。
@@ -8,7 +12,7 @@
 
 ## 下载即用（Windows 10/11 x64）
 
-[下载最新版 2.6.11 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.11-preview-Windows-x64.zip)
+[下载最新版 2.6.12 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.12-preview-Windows-x64.zip)
 
 无需编译或安装依赖。下载后完整解压，双击 SilverWolfPet.exe 即可运行。已有旧版时先从托盘退出；保留同目录 assets 文件夹。当前为变身功能试用版。
 
