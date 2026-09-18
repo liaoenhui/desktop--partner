@@ -71,7 +71,12 @@ public partial class PetWindow {
         bool hasReplies=replies.Children.Count>0;
         replies.Visibility=hasReplies?Visibility.Visible:Visibility.Collapsed;
         replies.Margin=hasReplies?new Thickness(0,6,0,0):new Thickness(0);
-        bubble.Width=codexFormWorking?Math.Max(240,Math.Min(265,prefs.Size*.78+70)):Math.Max(80,Math.Min(265,prefs.Size*.66+20));
+        if(codexFormWorking) {
+            double maxWidth=WorkBubbleMaximumWidth();
+            words.InvalidateMeasure();words.Measure(new Size(Double.PositiveInfinity,Double.PositiveInfinity));
+            double trim=bubblePanel.Padding.Left+bubblePanel.Padding.Right+bubblePanel.BorderThickness.Left+bubblePanel.BorderThickness.Right;
+            bubble.Width=Math.Max(118,Math.Min(maxWidth,Math.Ceiling(words.DesiredSize.Width+trim+2)));
+        } else bubble.Width=Math.Max(80,Math.Min(265,prefs.Size*.66+20));
         foreach(Button button in replies.Children) {
             var label=button.Content as TextBlock;
             if(label!=null)label.MaxWidth=Math.Max(30,bubble.Width-bubblePanel.Padding.Left-bubblePanel.Padding.Right-button.Padding.Left-button.Padding.Right-4);
@@ -97,7 +102,7 @@ public partial class PetWindow {
             background.GradientStops.Add(new GradientStop(Color.FromArgb(246,12,56,105),0));background.GradientStops.Add(new GradientStop(Color.FromArgb(246,82,35,137),1));
             var edge=new LinearGradientBrush {StartPoint=new Point(0,0),EndPoint=new Point(1,0)};
             edge.GradientStops.Add(new GradientStop(Color.FromRgb(83,224,255),0));edge.GradientStops.Add(new GradientStop(Color.FromRgb(218,91,255),1));
-            bubblePanel.Background=background;bubblePanel.BorderBrush=edge;bubblePanel.CornerRadius=new CornerRadius(18);bubblePanel.Padding=new Thickness(14,11,14,11);
+            bubblePanel.Background=background;bubblePanel.BorderBrush=edge;bubblePanel.CornerRadius=new CornerRadius(0);bubblePanel.Padding=new Thickness(10,9,10,9);
             bubblePanel.Effect=new System.Windows.Media.Effects.DropShadowEffect {Color=Color.FromRgb(101,67,215),BlurRadius=15,ShadowDepth=0,Opacity=.42};
             words.TextAlignment=TextAlignment.Center;
         } else {
@@ -107,6 +112,7 @@ public partial class PetWindow {
         }
         bubbleTail.Visibility=Visibility.Collapsed;
     }
+    double WorkBubbleMaximumWidth() {return Math.Min(250,Math.Max(118,Width-8));}
     void InitCompanionBubble() {
         words.FontFamily=new FontFamily("Microsoft YaHei");words.FontSize=12;words.TextAlignment=TextAlignment.Left;words.LineHeight=19;
         var content=new StackPanel();content.Children.Add(linkLabel);content.Children.Add(words);content.Children.Add(replies);bubblePanel.Child=content;

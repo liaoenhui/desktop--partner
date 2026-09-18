@@ -244,7 +244,9 @@ public sealed class QuotaSidebar : IDisposable {
             follower.Update(new List<QuotaReading>{new QuotaReading {Bucket="codex",Minutes=300,Remaining=68,ResetUtc=DateTime.UtcNow.AddHours(1)}});
             if(follower.shell.Visibility!=Visibility.Collapsed||follower.PercentText()!="68%")throw new Exception("borderless follower label");
             if(!(follower.bean.Fill is RadialGradientBrush)||follower.mouth.Height!=3)throw new Exception("hacker bean style");
-            follower.SetWorking(true);double closed=follower.mouth.Height;System.Threading.Thread.Sleep(80);follower.AnimateMouth();if(Math.Abs(follower.mouth.Height-closed)<.1)throw new Exception("working mouth did not animate");follower.SetWorking(false);
+            follower.SetWorking(true);double low=Double.MaxValue,high=Double.MinValue;
+            for(int i=0;i<6;i++){System.Threading.Thread.Sleep(45);follower.AnimateMouth();low=Math.Min(low,follower.mouth.Height);high=Math.Max(high,follower.mouth.Height);}
+            if(high-low<.5)throw new Exception("working mouth did not animate");follower.SetWorking(false);
             if(follower.docked||follower.handle.Height!=64||follower.handle.Left>=petBounds.Left||Math.Abs(follower.handle.Top+64-petBounds.Bottom-4)>1||follower.body.Children[0]!=follower.percentBadge)throw new Exception("companion lower-left placement / label order");
             if(Math.Abs((follower.popup.Top+follower.popup.Height/2)-(follower.handle.Top+follower.handle.Height/2))>1)throw new Exception("follower popup shifted vertically without obstruction");
             var leftProperty=System.ComponentModel.DependencyPropertyDescriptor.FromProperty(Window.LeftProperty,typeof(Window));

@@ -200,7 +200,7 @@ public partial class PetWindow {
         CodexFormFrame(start+.95,pack.Base);pet.Opacity=previous.Opacity=1;ApplyCodexCutinVisibility();
         if(cutin.Opacity<.9||!codexCutinVisible||pet.Opacity!=0||previous.Opacity!=0||Math.Max(cutin.Width,cutin.Height)>prefs.Size*1.021)throw new Exception("Cutin missing, oversized, or character still visible");
         var finalFrame=CodexFormFrame(start+2,pack.Base);
-        if(finalFrame!=codexFrames[2]||cutin.Opacity!=0||codexCutinVisible||words.Text!="行动开始，接下来看我操作。"||words.TextAlignment!=TextAlignment.Center||bubble.Width<240||words.DesiredSize.Height>words.LineHeight*1.25)throw new Exception("Work-form idle announcement or centered single-line bubble missing");
+        if(finalFrame!=codexFrames[2]||cutin.Opacity!=0||codexCutinVisible||words.Text!="行动开始，接下来看我操作。"||words.TextAlignment!=TextAlignment.Center||bubble.Width>=230||bubblePanel.CornerRadius.TopLeft!=0||words.DesiredSize.Height>words.LineHeight*1.25)throw new Exception("Compact square work bubble or idle announcement missing");
         double announcedUntil=bubbleUntil;CodexFormFrame(start+3,pack.Base);if(bubbleUntil!=announcedUntil)throw new Exception("Final form announcement repeated");
         SetCodexWorkStateAt("executing",start+3.1);if(codexIntroQueuedState!="executing")throw new Exception("Work state was not queued during intro");
         if(!codexWorkClips["thinking"].Frames.Contains(CodexFormFrame(start+5.3,pack.Base))||!codexIntroComplete||codexIntroQueuedState!="executing")throw new Exception("Thinking bridge after transformation missing");
