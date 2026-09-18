@@ -268,7 +268,7 @@ public partial class PetWindow : Window {
         string warning=null;
         try { pack=LoadedPack.Load(String.IsNullOrEmpty(prefs.PackPath)?defaultPack:prefs.PackPath); }
         catch(Exception ex) { pack=LoadedPack.Load(defaultPack); prefs.PackPath=""; warning="自定义素材无法载入，已恢复默认形象。"; Debug.WriteLine(ex); }
-        Title="银狼 LV.999 桌宠 · 2.6.15 预览版"; WindowStyle=WindowStyle.None; ResizeMode=ResizeMode.NoResize;
+        Title="银狼 LV.999 桌宠 · 2.6.16 预览版"; WindowStyle=WindowStyle.None; ResizeMode=ResizeMode.NoResize;
         Icon=BitmapFrame.Create(new Uri(System.IO.Path.Combine(root,"assets","silver-wolf.ico")));
         AllowsTransparency=true; Background=Brushes.Transparent; ShowInTaskbar=false;ShowActivated=false; Topmost=prefs.Topmost;
         if(preview) { ShowInTaskbar=true; Title="银狼 LV.999 · 动作测试"; }
@@ -285,9 +285,9 @@ public partial class PetWindow : Window {
             InitExperience(source.Handle);
             var area=Forms.Screen.PrimaryScreen.WorkingArea;
             var visible=VisibleFrameBounds(cachedBitmap);
-            bool wasAtOldRightEdge=prefs.Left>-90000&&Math.Abs(prefs.Left-(area.Right/dpiX-Width))<=6;
-            Left=prefs.Left < -90000 ? area.Right/dpiX-visible.Right-18 : prefs.Left;
-            if(wasAtOldRightEdge)Left=area.Right/dpiX-visible.Right-3;
+            double screenRight=area.Right/dpiX;
+            bool wasAtRightEdge=prefs.Left>-90000&&(Math.Abs(prefs.Left-(screenRight-Width))<=6||prefs.Left+visible.Right>=screenRight-30);
+            Left=prefs.Left < -90000||wasAtRightEdge ? AccessorySafeLeft(screenRight,Width) : prefs.Left;
             SetPetWindowTop(prefs.Top < -90000 ? area.Bottom/dpiY-Height-20 : prefs.Top);
             Clamp();
         };
@@ -407,7 +407,8 @@ public partial class PetWindow : Window {
     string Pick(string[] lines,string fallback) { return lines==null||lines.Length==0?fallback:lines[random.Next(lines.Length)]; }
     void Enter(string next) { state=next; stateStart=elapsed.Elapsed.TotalSeconds; }
     void ScheduleIdle(double now) { nextIdle=now+18+random.NextDouble()*14; nextBlink=now+3+random.NextDouble()*4; }
-    void Say(string message,double seconds,int priority=3,bool welcome=false) {
+    void Say(string message,double seconds,int priority=3,bool welcome=false,bool workSpeech=false) {
+        if(codexFormWorking&&!workSpeech)return;
         if(bubble.Visibility==Visibility.Visible&&elapsed.Elapsed.TotalSeconds<bubbleUntil&&priority<bubblePriority)return;
         replies.Children.Clear();bubble.IsHitTestVisible=false;
         ApplyBubbleTheme();
@@ -431,7 +432,7 @@ public partial class PetWindow : Window {
         }
     }
     void CheckReminders(DateTime localNow) {
-        if(!prefs.TimeReminders||!IsVisible||pressed||menuOpen||settings!=null||state!="idle"||bubble.Visibility==Visibility.Visible)return;
+        if(codexFormWorking||!prefs.TimeReminders||!IsVisible||pressed||menuOpen||settings!=null||state!="idle"||bubble.Visibility==Visibility.Visible)return;
         var due=ReminderSchedule.Due(pack.Spec.reminders,localNow,prefs.ReminderShown);if(due==null)return;
         if(!String.IsNullOrEmpty(due.action)&&pack.Clips.ContainsKey(due.action))Enter(due.action);
         Prompt(ChooseLine("reminder:"+due.id,due.lines),"daily:"+due.id,2);ScheduleIdle(elapsed.Elapsed.TotalSeconds);
@@ -523,7 +524,12 @@ public partial class PetWindow : Window {
     void PreviewAction(string action) { if(pressed)return; Enter(action); ScheduleIdle(elapsed.Elapsed.TotalSeconds); bubble.Visibility=Visibility.Collapsed; SpeakAction(action=="dragPreview"?"drag":action); }
     void ResizePet(double size) { double bottom=PetTop+prefs.Size+85; prefs.Size=Bound(size,160,600); Width=prefs.Size*1.6+28; Height=prefs.Size+85+bubbleExtra; SetPetWindowTop(bottom-Height);LayoutBubble(); Clamp(); Save(); }
     void ShowPet() { RevealManually(); Activate(); SetForegroundWindow(new WindowInteropHelper(this).Handle); }
-    void Recover() { var area=Forms.Screen.PrimaryScreen.WorkingArea;var visible=VisibleFrameBounds(cachedBitmap);Left=area.Right/dpiX-visible.Right-18; SetPetWindowTop(area.Bottom/dpiY-Height-20);Clamp();ShowPet(); Save(); }
+    static double AccessorySafeLeft(double screenRight,double width) {return screenRight-width-18;}
+    void KeepAccessoriesOnScreen() {
+        var screen=Forms.Screen.FromPoint(new System.Drawing.Point((int)((Left+Width/2)*dpiX),(int)((PetTop+70+prefs.Size/2)*dpiY)));var area=screen.WorkingArea;
+        Left=Bound(Left,area.Left/dpiX+18,AccessorySafeLeft(area.Right/dpiX,Width));
+    }
+    void Recover() { var area=Forms.Screen.PrimaryScreen.WorkingArea;Left=AccessorySafeLeft(area.Right/dpiX,Width); SetPetWindowTop(area.Bottom/dpiY-Height-20);Clamp();ShowPet(); Save(); }
     Rect[] SidebarObstacles() {
         if(!IsVisible||Double.IsNaN(Left)||Double.IsNaN(Top))return new Rect[0];
         var result=new List<Rect>();
@@ -540,7 +546,7 @@ public partial class PetWindow : Window {
     void ShowSidebar() { prefs.SidebarEnabled=true;Save();if(sidebar!=null)sidebar.Expand(); }
     void CreateTray() {
         trayIcon=new System.Drawing.Icon(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"assets","silver-wolf.ico"),Forms.SystemInformation.SmallIconSize);
-        tray=new Forms.NotifyIcon { Icon=trayIcon, Text="银狼 LV.999 · v2.6.15 预览版 · 双击找回桌宠", Visible=true };
+        tray=new Forms.NotifyIcon { Icon=trayIcon, Text="银狼 LV.999 · v2.6.16 预览版 · 双击找回桌宠", Visible=true };
         var menu=new Forms.ContextMenuStrip();
         menu.Items.Add("显示 / 找回桌宠",null,delegate { Dispatcher.Invoke(new Action(Recover)); });
         menu.Items.Add("隐藏桌宠",null,delegate { Dispatcher.Invoke(new Action(HideManually)); });
@@ -578,7 +584,7 @@ public partial class PetWindow : Window {
         settings=new Window { Title="银狼 LV.999 · 设置", Width=410, Height=640, ResizeMode=ResizeMode.NoResize, WindowStartupLocation=WindowStartupLocation.CenterScreen, Background=new SolidColorBrush(Color.FromRgb(245,243,252)), Topmost=true };
         ThemeWindow(settings);
         var panel=new StackPanel { Margin=new Thickness(24) }; settings.Content=new ScrollViewer { Content=panel, VerticalScrollBarVisibility=ScrollBarVisibility.Auto };
-        panel.Children.Add(new TextBlock { Text="PLAYER SETTINGS  /  2.6.15 预览版", FontSize=20, FontWeight=FontWeights.Bold, Foreground=new SolidColorBrush(Color.FromRgb(76,54,136)) });
+        panel.Children.Add(new TextBlock { Text="PLAYER SETTINGS  /  2.6.16 预览版", FontSize=20, FontWeight=FontWeights.Bold, Foreground=new SolidColorBrush(Color.FromRgb(76,54,136)) });
         var packLabel=new TextBlock { Text="当前形象："+(pack.Spec.name??"自定义"), Margin=new Thickness(0,12,0,16) }; panel.Children.Add(packLabel);
         panel.Children.Add(new TextBlock { Text="桌宠大小（也可在角色上滚动鼠标滚轮）" });
         var slider=new Slider { Minimum=160, Maximum=600, Value=prefs.Size, Margin=new Thickness(0,8,0,16), TickFrequency=20, IsSnapToTickEnabled=true }; slider.ValueChanged+=delegate { ResizePet(slider.Value); }; panel.Children.Add(slider);
@@ -696,7 +702,7 @@ public partial class PetWindow : Window {
         var valid=LoadedPack.Load(fixture); if(valid.Spec.fps!=30||valid.Frames["click"].Length!=1)throw new Exception("animated pack load failed"); checks.Add("PASS custom animation pack and FPS limit");
         if(Bound(-200,0,100)!=0||Bound(250,0,100)!=100||Bound(20,0,100)!=20) throw new Exception("bounds failed");
         var visibleFrame=VisibleFrameBounds(pack.Base);
-        if(visibleFrame.IsEmpty||visibleFrame.Width>=Width-29||Math.Abs(ClampVisibleHorizontal(999,0,1000,new Rect(20,0,100,100),3)-877)>.01)throw new Exception("visible pixel edge clamp failed");
+        if(visibleFrame.IsEmpty||visibleFrame.Width>=Width-29||Math.Abs(ClampVisibleHorizontal(999,0,1000,new Rect(20,0,100,100),3)-877)>.01||Math.Abs(AccessorySafeLeft(1920,284)+284-1902)>.01)throw new Exception("visible pixel edge clamp or accessory-safe startup placement failed");
         checks.Add("PASS screen bounds use visible pixels instead of transparent frame padding");
         if(pack.Base.PixelWidth==0)throw new Exception("empty asset");
         int clear=0,opaque=0; for(int i=3;i<alpha.Length;i+=4){if(alpha[i]==0)clear++;if(alpha[i]>200)opaque++;}
@@ -770,7 +776,7 @@ public static class Program {
         try {
             bool created;
             using(var mutex=new System.Threading.Mutex(true,test?"Local\\SilverWolfPet.Test":preview?"Local\\SilverWolfPet.Preview":"Local\\SilverWolfPet.Desktop",out created)) {
-                if(!created) { if(!autoStart)MessageBox.Show("已有桌宠在运行。若要升级，请先在旧版托盘菜单点击退出，再启动 v2.6.15 预览版。","银狼 LV.999"); return 0; }
+                if(!created) { if(!autoStart)MessageBox.Show("已有桌宠在运行。若要升级，请先在旧版托盘菜单点击退出，再启动 v2.6.16 预览版。","银狼 LV.999"); return 0; }
                 var app=new Application { ShutdownMode=ShutdownMode.OnMainWindowClose };
                 var window=new PetWindow(root,test,preview); app.MainWindow=window;
                 if(test) { window.SelfTest(root); window.Close(); return 0; }

@@ -71,7 +71,7 @@ public partial class PetWindow {
         bool hasReplies=replies.Children.Count>0;
         replies.Visibility=hasReplies?Visibility.Visible:Visibility.Collapsed;
         replies.Margin=hasReplies?new Thickness(0,6,0,0):new Thickness(0);
-        bubble.Width=Math.Max(80,Math.Min(265,prefs.Size*.66+20));
+        bubble.Width=codexFormWorking?Math.Max(240,Math.Min(265,prefs.Size*.78+70)):Math.Max(80,Math.Min(265,prefs.Size*.66+20));
         foreach(Button button in replies.Children) {
             var label=button.Content as TextBlock;
             if(label!=null)label.MaxWidth=Math.Max(30,bubble.Width-bubblePanel.Padding.Left-bubblePanel.Padding.Right-button.Padding.Left-button.Padding.Right-4);
@@ -99,9 +99,11 @@ public partial class PetWindow {
             edge.GradientStops.Add(new GradientStop(Color.FromRgb(83,224,255),0));edge.GradientStops.Add(new GradientStop(Color.FromRgb(218,91,255),1));
             bubblePanel.Background=background;bubblePanel.BorderBrush=edge;bubblePanel.CornerRadius=new CornerRadius(18);bubblePanel.Padding=new Thickness(14,11,14,11);
             bubblePanel.Effect=new System.Windows.Media.Effects.DropShadowEffect {Color=Color.FromRgb(101,67,215),BlurRadius=15,ShadowDepth=0,Opacity=.42};
+            words.TextAlignment=TextAlignment.Center;
         } else {
             bubblePanel.Background=new LinearGradientBrush(Color.FromRgb(37,28,65),Color.FromRgb(16,20,36),45);
             bubblePanel.BorderBrush=new SolidColorBrush(Color.FromRgb(123,104,205));bubblePanel.CornerRadius=new CornerRadius(14,14,4,14);bubblePanel.Padding=new Thickness(13,11,13,11);bubblePanel.Effect=null;
+            words.TextAlignment=TextAlignment.Left;
         }
         bubbleTail.Visibility=Visibility.Collapsed;
     }
@@ -131,7 +133,7 @@ public partial class PetWindow {
         LayoutBubble();
     }
     void Prompt(string message,string category,int priority) {
-        if(Muted(category))return;
+        if(codexFormWorking||Muted(category))return;
         if(bubble.Visibility==Visibility.Visible&&elapsed.Elapsed.TotalSeconds<bubbleUntil&&priority<bubblePriority)return;
         Say(message,25,priority);
         Reply("知道了",delegate { Say("收到。接下来就看你的操作了。",3); });
@@ -147,12 +149,14 @@ public partial class PetWindow {
         return now>=next&&roll<0.20;
     }
     void MaybeInviteReplies() {
+        if(codexFormWorking)return;
         DateTime now=DateTime.UtcNow;
         if(!InvitationReady(now,prefs.NextInviteUtc,random.NextDouble()))return;
         InviteReplies();
         prefs.NextInviteUtc=now.AddMinutes(10);Save();
     }
     void InviteReplies() {
+        if(codexFormWorking)return;
         bubbleUntil=elapsed.Elapsed.TotalSeconds+15;
         Reply("好啊，陪你一会儿",delegate { Enter("game");Say("那就坐稳，看我操作。",4); });
         Reply("等我忙完",delegate { Enter("headpat");Say("行，你先过眼前这关。我等着。",4); });
@@ -170,7 +174,7 @@ public partial class PetWindow {
         if(isAway&&!pressed&&state!="sleep") { Enter("sleep");keyboard.Visibility=Visibility.Collapsed;inputAnimating=false; }
         if(!away&&hadAway) {
             hadAway=false;
-            if(prefs.AwayReaction&&IsVisible&&!pressed) { Enter("stretch");Say("挂机结束了？欢迎回来，轮到你操作了。",6,2); }
+            if(!codexFormWorking&&prefs.AwayReaction&&IsVisible&&!pressed) { Enter("stretch");Say("挂机结束了？欢迎回来，轮到你操作了。",6,2); }
         }
         if(!isAway&&state=="sleep")Enter("idle");
         int pulses=activityPulse!=null?activityPulse.Take():0;
