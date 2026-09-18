@@ -48,6 +48,7 @@ public partial class PetWindow {
     ActivityPulse activityPulse;
     bool isAway,hadAway,inputAnimating;
     double nextCompanionSecond,inputUntil,lastCompanionSample,lastBreakActive,bubbleExtra,inputHeat;
+    bool? bubbleThemeWork;
     double bubbleAnchorTop=Double.NaN;
     double PetTop { get { return bubbleExtra==0||Double.IsNaN(bubbleAnchorTop)?Top:bubbleAnchorTop; } }
     void SetPetWindowTop(double top) {
@@ -75,7 +76,7 @@ public partial class PetWindow {
             var label=button.Content as TextBlock;
             if(label!=null)label.MaxWidth=Math.Max(30,bubble.Width-bubblePanel.Padding.Left-bubblePanel.Padding.Right-button.Padding.Left-button.Padding.Right-4);
         }
-        double verticalTrim=bubblePanel.Padding.Top+bubblePanel.Padding.Bottom+bubblePanel.BorderThickness.Top+bubblePanel.BorderThickness.Bottom+11;
+        double verticalTrim=bubblePanel.Padding.Top+bubblePanel.Padding.Bottom+bubblePanel.BorderThickness.Top+bubblePanel.BorderThickness.Bottom;
         double contentWidth=Math.Max(1,bubble.Width-bubblePanel.Padding.Left-bubblePanel.Padding.Right-bubblePanel.BorderThickness.Left-bubblePanel.BorderThickness.Right);
         words.InvalidateMeasure();words.Measure(new Size(contentWidth,Double.PositiveInfinity));
         double contentHeight=words.DesiredSize.Height+(hasReplies?replies.Margin.Top+replies.Margin.Bottom:0);
@@ -89,17 +90,27 @@ public partial class PetWindow {
     [DllImport("user32.dll")] static extern short GetAsyncKeyState(int key);
     static double IdleSeconds() { var info=new LastInput { cbSize=8 };return GetLastInputInfo(ref info)?unchecked((uint)Environment.TickCount-info.dwTime)/1000.0:Double.NaN; }
     readonly TextBlock linkLabel=new TextBlock { Text="银狼  /  LV.999",FontSize=10,Foreground=new SolidColorBrush(Color.FromRgb(111,231,255)),Margin=new Thickness(0,0,0,7) };
+    void ApplyBubbleTheme() {
+        bool work=codexFormWorking;if(bubbleThemeWork.HasValue&&bubbleThemeWork.Value==work)return;bubbleThemeWork=work;
+        if(work) {
+            var background=new LinearGradientBrush {StartPoint=new Point(0,0),EndPoint=new Point(1,1)};
+            background.GradientStops.Add(new GradientStop(Color.FromArgb(246,12,56,105),0));background.GradientStops.Add(new GradientStop(Color.FromArgb(246,82,35,137),1));
+            var edge=new LinearGradientBrush {StartPoint=new Point(0,0),EndPoint=new Point(1,0)};
+            edge.GradientStops.Add(new GradientStop(Color.FromRgb(83,224,255),0));edge.GradientStops.Add(new GradientStop(Color.FromRgb(218,91,255),1));
+            bubblePanel.Background=background;bubblePanel.BorderBrush=edge;bubblePanel.CornerRadius=new CornerRadius(18);bubblePanel.Padding=new Thickness(14,11,14,11);
+            bubblePanel.Effect=new System.Windows.Media.Effects.DropShadowEffect {Color=Color.FromRgb(101,67,215),BlurRadius=15,ShadowDepth=0,Opacity=.42};
+        } else {
+            bubblePanel.Background=new LinearGradientBrush(Color.FromRgb(37,28,65),Color.FromRgb(16,20,36),45);
+            bubblePanel.BorderBrush=new SolidColorBrush(Color.FromRgb(123,104,205));bubblePanel.CornerRadius=new CornerRadius(14,14,4,14);bubblePanel.Padding=new Thickness(13,11,13,11);bubblePanel.Effect=null;
+        }
+        bubbleTail.Visibility=Visibility.Collapsed;
+    }
     void InitCompanionBubble() {
-        var background=new LinearGradientBrush {StartPoint=new Point(0,0),EndPoint=new Point(1,1)};
-        background.GradientStops.Add(new GradientStop(Color.FromArgb(246,12,56,105),0));background.GradientStops.Add(new GradientStop(Color.FromArgb(246,82,35,137),1));
-        var edge=new LinearGradientBrush {StartPoint=new Point(0,0),EndPoint=new Point(1,0)};
-        edge.GradientStops.Add(new GradientStop(Color.FromRgb(83,224,255),0));edge.GradientStops.Add(new GradientStop(Color.FromRgb(218,91,255),1));
-        bubblePanel.Background=background;bubblePanel.BorderBrush=edge;bubbleTail.Fill=edge;
-        bubblePanel.Effect=new System.Windows.Media.Effects.DropShadowEffect {Color=Color.FromRgb(101,67,215),BlurRadius=15,ShadowDepth=0,Opacity=.42};
         words.FontFamily=new FontFamily("Microsoft YaHei");words.FontSize=12;words.TextAlignment=TextAlignment.Left;words.LineHeight=19;
         var content=new StackPanel();content.Children.Add(linkLabel);content.Children.Add(words);content.Children.Add(replies);bubblePanel.Child=content;
-        bubble.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});bubble.RowDefinitions.Add(new RowDefinition {Height=new GridLength(11)});
+        bubble.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});bubble.RowDefinitions.Add(new RowDefinition {Height=new GridLength(0)});
         Grid.SetRow(bubblePanel,0);Grid.SetRow(bubbleTail,1);bubble.Children.Add(bubblePanel);bubble.Children.Add(bubbleTail);
+        ApplyBubbleTheme();
     }
     void InitCompanion() {
         if(!testing&&prefs.InputReaction)activityPulse=new ActivityPulse();

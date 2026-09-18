@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Web.Script.Serialization;
-using System.Text.RegularExpressions;
 
 namespace SilverWolfPet {
 public sealed class QuotaReading { public string Bucket;public int Minutes;public double Remaining;public DateTime ResetUtc; }
@@ -128,28 +127,40 @@ public sealed class CodexMonitor : IDisposable {
         if(line.IndexOf(kind,StringComparison.Ordinal)<0)return null;
         try {var root=Parse(line);if(Str(Get(root,"type"))!="event_msg")return null;var payload=Obj(Get(root,"payload"));if(Str(Get(payload,"type"))!=kind)return null;string id=Str(Get(payload,"turn_id"));return String.IsNullOrEmpty(id)?"current":id;}catch{return null;}
     }
-    static bool FailedOutput(string value) {
-        if(String.IsNullOrEmpty(value))return false;
-        return value.IndexOf("\"isError\":true",StringComparison.OrdinalIgnoreCase)>=0||
-            Regex.IsMatch(value,"\"(?:exit_code|exitCode)\"\\s*:\\s*[1-9][0-9]*",RegexOptions.IgnoreCase);
+    static string JsonStringAfterKey(string line,string key,int start=0) {
+        if(String.IsNullOrEmpty(line))return "";int at=line.IndexOf("\""+key+"\"",start,StringComparison.Ordinal);
+        if(at<0)return "";int colon=line.IndexOf(':',at+key.Length+2);if(colon<0)return "";int quote=line.IndexOf('"',colon+1);if(quote<0)return "";
+        int end=quote+1;while(end<line.Length) {if(line[end]=='"'&&line[end-1]!='\\')break;end++;}return end<line.Length?line.Substring(quote+1,end-quote-1):"";
+    }
+    static DateTime LineTimeUtc(string line) {
+        DateTime parsed;if(!DateTime.TryParse(JsonStringAfterKey(line,"timestamp"),null,System.Globalization.DateTimeStyles.RoundtripKind,out parsed))return DateTime.MinValue;return parsed.ToUniversalTime();
+    }
+    static bool NonZeroAfterKey(string line,string key) {
+        int at=line.IndexOf(key,StringComparison.OrdinalIgnoreCase);if(at<0)return false;int colon=line.IndexOf(':',at+key.Length);if(colon<0)return false;int p=colon+1;
+        while(p<line.Length&&(Char.IsWhiteSpace(line[p])||line[p]=='\\'||line[p]=='"'))p++;
+        return p<line.Length&&line[p]>='1'&&line[p]<='9';
+    }
+    static bool FailedOutput(string line) {
+        return NonZeroAfterKey(line,"exit_code")||NonZeroAfterKey(line,"exitCode")||
+            line.IndexOf("isError\\\":true",StringComparison.OrdinalIgnoreCase)>=0||line.IndexOf("\"isError\":true",StringComparison.OrdinalIgnoreCase)>=0;
     }
     public static string StateForLine(string line) {
         try {
-            var root=Parse(line);var payload=Obj(Get(root,"payload"));string type=Str(Get(payload,"type"));
+            int payloadAt=line.IndexOf("\"payload\"",StringComparison.Ordinal);if(payloadAt<0)return null;
+            string type=JsonStringAfterKey(line,"type",payloadAt);
             if(type=="task_started")return "thinking";
             if(type=="turn_aborted")return "failed";
             if(type=="task_complete")return null; // Published only after debounce confirms the task really ended.
             if(type=="custom_tool_call"||type=="function_call") {
-                string name=Str(Get(payload,"name")),arguments=Str(Get(payload,"input"))+" "+Str(Get(payload,"arguments"));
-                if(name.IndexOf("request_user_input",StringComparison.OrdinalIgnoreCase)>=0||arguments.IndexOf("require_escalated",StringComparison.OrdinalIgnoreCase)>=0)return "waiting-input";
+                string name=JsonStringAfterKey(line,"name",payloadAt);
+                if(name.IndexOf("request_user_input",StringComparison.OrdinalIgnoreCase)>=0||line.IndexOf("require_escalated",StringComparison.OrdinalIgnoreCase)>=0)return "waiting-input";
                 return "executing";
             }
-            if(type=="custom_tool_call_output"||type=="function_call_output")return FailedOutput(Str(Get(payload,"output")))?"failed":"thinking";
-            if(type=="reasoning"||type=="agent_message")return "thinking";
-            if(type=="item_completed") {
-                var item=Obj(Get(payload,"item"));string itemType=Str(Get(item,"type"));
-                if(itemType=="CommandExecution"||itemType=="McpToolCall"||itemType=="FileChange")return "thinking";
-            }
+            // A successful tool result or FileChange completion does not itself mean
+            // the model has returned to reasoning. Keep the operation pose until an
+            // explicit reasoning item arrives; this avoids edit/think flicker.
+            if(type=="custom_tool_call_output"||type=="function_call_output")return FailedOutput(line)?"failed":null;
+            if(type=="reasoning")return "thinking";
         }catch { }
         return null;
     }
@@ -196,17 +207,15 @@ public sealed class CodexMonitor : IDisposable {
                         if(value==10) {
                             string line=Encoding.UTF8.GetString(bytes.ToArray());string id=CompletionId(line);bytes.Clear();
                             bool wasWorking=active.Any();string taskStarted=StartedId(line),aborted=EventId(line,"turn_aborted");
-                            DateTime eventTime;
-                            bool fresh=DateTime.TryParse(Str(Get(Parse(line),"timestamp")),null,System.Globalization.DateTimeStyles.RoundtripKind,out eventTime)&&eventTime.ToUniversalTime()>=started;
+                            DateTime timestamp=LineTimeUtc(line);bool fresh=timestamp!=DateTime.MinValue&&timestamp>=started;
                             if(taskStarted!=null&&fresh) {active[file]=taskStarted;pendingCompletions.Remove(file);}
                             string current;
                             if(aborted!=null&&active.TryGetValue(file,out current)&&(aborted=="current"||current==aborted)) {active.Remove(file);pendingCompletions.Remove(file);}
                             PublishWorking(wasWorking);
                             string inferred=StateForLine(line);
                             if(!baseline&&fresh&&TasksEnabled&&inferred!=null&&(taskStarted!=null||aborted!=null||active.ContainsKey(file))&&TaskState!=null)TaskState(inferred);
-                            DateTime timestamp=DateTime.MinValue;
-                            if(id!=null&&(!DateTime.TryParse(Str(Get(Parse(line),"timestamp")),null,System.Globalization.DateTimeStyles.RoundtripKind,out timestamp)||timestamp.ToUniversalTime()<started))id=null;
-                            if(!baseline&&!String.IsNullOrEmpty(id)&&active.TryGetValue(file,out current)&&(id=="current"||current==id))pendingCompletions[file]=new PendingCompletion {Id=id,EventUtc=timestamp.ToUniversalTime(),ReadyUtc=DateTime.UtcNow.AddSeconds(8),Notify=TasksEnabled};
+                            if(id!=null&&(timestamp==DateTime.MinValue||timestamp<started))id=null;
+                            if(!baseline&&!String.IsNullOrEmpty(id)&&active.TryGetValue(file,out current)&&(id=="current"||current==id))pendingCompletions[file]=new PendingCompletion {Id=id,EventUtc=timestamp,ReadyUtc=DateTime.UtcNow.AddSeconds(8),Notify=TasksEnabled};
                         } else if(bytes.Count<16*1024*1024) { bytes.Add((byte)value); }
                     }
                     offsets[file]=stream.Position;
@@ -234,7 +243,7 @@ public sealed class CodexMonitor : IDisposable {
     public static void SelfTest(string root) {
         if(Level(50)!=100||Level(49)!=50||Level(20)!=50||Level(19)!=20||Level(5)!=20||Level(4)!=5||Level(0)!=0||ShouldAlert(19,20)||!ShouldAlert(4,50))throw new Exception("quota thresholds failed");
         if(CompletionId("{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"test\"}}")!="test"||StartedId("{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"go\"}}")!="go"||EndedId("{\"type\":\"event_msg\",\"payload\":{\"type\":\"turn_aborted\",\"turn_id\":\"stop\"}}")!="stop"||CompletionId("not json")!=null)throw new Exception("task event parsing failed");
-        if(StateForLine("{\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call\",\"name\":\"exec\",\"input\":\"{}\"}}")!="executing"||StateForLine("{\"type\":\"response_item\",\"payload\":{\"type\":\"function_call\",\"name\":\"request_user_input_async\"}}")!="waiting-input"||StateForLine("{\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call_output\",\"output\":\"{\\\"exit_code\\\":1}\"}}")!="failed")throw new Exception("task state classification failed");
+        if(StateForLine("{\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call\",\"name\":\"exec\",\"input\":\"{}\"}}")!="executing"||StateForLine("{\"type\":\"response_item\",\"payload\":{\"type\":\"function_call\",\"name\":\"request_user_input_async\"}}")!="waiting-input"||StateForLine("{\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call_output\",\"output\":\"{\\\"exit_code\\\":1}\"}}")!="failed"||StateForLine("{\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call_output\",\"output\":\"{\\\"exit_code\\\":0}\"}}")!=null||StateForLine("{\"type\":\"event_msg\",\"payload\":{\"type\":\"item_completed\",\"item\":{\"type\":\"FileChange\"}}}")!=null)throw new Exception("task state classification failed");
         string fixture=Path.Combine(root,"qa","codex-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Path.Combine(fixture,"sessions"));
         string log=Path.Combine(fixture,"sessions","rollout-test.jsonl");
         Func<string,string,string> record=(id,time)=>"{\"timestamp\":\""+time+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\""+id+"\"}}\n";
