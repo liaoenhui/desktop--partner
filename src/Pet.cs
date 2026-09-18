@@ -259,7 +259,57 @@ public partial class PetWindow : Window {
     BitmapSource cachedBitmap;
     byte[] alpha;
     double dpiX = 1, dpiY = 1;
+    delegate bool EnumWindowsCallback(IntPtr handle,IntPtr parameter);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsCallback callback,IntPtr parameter);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr handle);
+    [DllImport("user32.dll")] static extern bool IsIconic(IntPtr handle);
+    [DllImport("user32.dll")] static extern bool ShowWindowAsync(IntPtr handle,int command);
+    [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr handle);
+    [DllImport("user32.dll")] static extern int GetWindowTextLength(IntPtr handle);
+    [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr handle,StringBuilder text,int maximum);
+    [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr handle,StringBuilder text,int maximum);
     [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr handle);
+    static int CodexWindowScore(string processName,string title) {
+        processName=(processName??"").Trim().ToLowerInvariant();title=(title??"").Trim();
+        int score=0;
+        if(processName=="chatgpt")score=300;
+        else if(processName=="codex")score=260;
+        else if(processName.IndexOf("chatgpt",StringComparison.Ordinal)>=0)score=220;
+        else if(processName.IndexOf("codex",StringComparison.Ordinal)>=0)score=200;
+        else return 0;
+        if(title.IndexOf("Codex",StringComparison.OrdinalIgnoreCase)>=0)score+=80;
+        if(title.IndexOf("ChatGPT",StringComparison.OrdinalIgnoreCase)>=0)score+=30;
+        return score;
+    }
+    static int CodexWindowScore(string processName,string title,string className,int width,int height,bool iconic) {
+        if(String.Equals(className,"ConsoleWindowClass",StringComparison.OrdinalIgnoreCase))return 0;
+        if(!iconic&&(width<480||height<320))return 0;
+        return CodexWindowScore(processName,title);
+    }
+    bool TryActivateCodexWindow() {
+        IntPtr own=new WindowInteropHelper(this).Handle,best=IntPtr.Zero;int bestScore=0,order=0,bestOrder=Int32.MaxValue;
+        EnumWindows(delegate(IntPtr handle,IntPtr parameter) {
+            if(handle==own||!IsWindowVisible(handle))return true;
+            int length=GetWindowTextLength(handle);
+            var title=new StringBuilder(Math.Max(1,Math.Min(length+1,1024)));GetWindowText(handle,title,title.Capacity);
+            var className=new StringBuilder(256);GetClassName(handle,className,className.Capacity);
+            QuietRect rect;if(!GetWindowRect(handle,out rect))return true;
+            uint processId;GetWindowThreadProcessId(handle,out processId);string processName="";
+            try {using(var process=Process.GetProcessById((int)processId))processName=process.ProcessName;}catch{return true;}
+            int score=CodexWindowScore(processName,title.ToString(),className.ToString(),rect.Right-rect.Left,rect.Bottom-rect.Top,IsIconic(handle));
+            // EnumWindows is ordered from top to bottom. Keep the most recently
+            // visible matching window when several Codex windows have equal rank.
+            if(score>bestScore||(score==bestScore&&score>0&&order<bestOrder)){best=handle;bestScore=score;bestOrder=order;}
+            order++;return true;
+        },IntPtr.Zero);
+        if(best==IntPtr.Zero)return false;
+        if(IsIconic(best))ShowWindowAsync(best,9); // SW_RESTORE
+        bool brought=BringWindowToTop(best),foreground=SetForegroundWindow(best);
+        // Windows can report that the foreground request was denied even after
+        // BringWindowToTop has visibly activated the target. Either result means
+        // the click reached a usable Codex window.
+        return foreground||brought;
+    }
     public PetWindow(string root, bool test, bool preview=false) {
         testing=test||preview;
         defaultPack=System.IO.Path.Combine(root,"assets","default","pet.json");
@@ -268,7 +318,7 @@ public partial class PetWindow : Window {
         string warning=null;
         try { pack=LoadedPack.Load(String.IsNullOrEmpty(prefs.PackPath)?defaultPack:prefs.PackPath); }
         catch(Exception ex) { pack=LoadedPack.Load(defaultPack); prefs.PackPath=""; warning="自定义素材无法载入，已恢复默认形象。"; Debug.WriteLine(ex); }
-        Title="银狼 LV.999 桌宠 · 2.6.20 预览版"; WindowStyle=WindowStyle.None; ResizeMode=ResizeMode.NoResize;
+        Title="银狼 LV.999 桌宠 · 2.6.21 预览版"; WindowStyle=WindowStyle.None; ResizeMode=ResizeMode.NoResize;
         Icon=BitmapFrame.Create(new Uri(System.IO.Path.Combine(root,"assets","silver-wolf.ico")));
         AllowsTransparency=true; Background=Brushes.Transparent; ShowInTaskbar=false;ShowActivated=false; Topmost=prefs.Topmost;
         if(preview) { ShowInTaskbar=true; Title="银狼 LV.999 · 动作测试"; }
@@ -559,7 +609,7 @@ public partial class PetWindow : Window {
     void ShowSidebar() { prefs.SidebarEnabled=true;Save();if(sidebar!=null)sidebar.Expand(); }
     void CreateTray() {
         trayIcon=new System.Drawing.Icon(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"assets","silver-wolf.ico"),Forms.SystemInformation.SmallIconSize);
-        tray=new Forms.NotifyIcon { Icon=trayIcon, Text="银狼 LV.999 · v2.6.20 预览版 · 双击找回桌宠", Visible=true };
+        tray=new Forms.NotifyIcon { Icon=trayIcon, Text="银狼 LV.999 · v2.6.21 预览版 · 双击找回桌宠", Visible=true };
         var menu=new Forms.ContextMenuStrip();
         menu.Items.Add("显示 / 找回桌宠",null,delegate { Dispatcher.Invoke(new Action(Recover)); });
         menu.Items.Add("隐藏桌宠",null,delegate { Dispatcher.Invoke(new Action(HideManually)); });
@@ -790,7 +840,7 @@ public static class Program {
         try {
             bool created;
             using(var mutex=new System.Threading.Mutex(true,test?"Local\\SilverWolfPet.Test":preview?"Local\\SilverWolfPet.Preview":"Local\\SilverWolfPet.Desktop",out created)) {
-                if(!created) { if(!autoStart)MessageBox.Show("已有桌宠在运行。若要升级，请先在旧版托盘菜单点击退出，再启动 v2.6.20 预览版。","银狼 LV.999"); return 0; }
+                if(!created) { if(!autoStart)MessageBox.Show("已有桌宠在运行。若要升级，请先在旧版托盘菜单点击退出，再启动 v2.6.21 预览版。","银狼 LV.999"); return 0; }
                 var app=new Application { ShutdownMode=ShutdownMode.OnMainWindowClose };
                 var window=new PetWindow(root,test,preview); app.MainWindow=window;
                 if(test) { window.SelfTest(root); window.Close(); return 0; }

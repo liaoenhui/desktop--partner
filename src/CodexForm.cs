@@ -151,7 +151,7 @@ public partial class PetWindow {
         if(!codexStateBubblePending||codexStateSpoken.Contains(codexWorkState))return;
         string line;double seconds;int priority;
         switch(codexWorkState) {
-            case "waiting-input":line=ChooseLine("codex-waiting",new[]{"需要你的操作。\n请回到 Codex 完成授权或回答。","轮到你了。\n请确认权限或补充信息。"});seconds=Double.PositiveInfinity;priority=6;break;
+            case "waiting-input":line="别发呆了，快给我个权限。";seconds=Double.PositiveInfinity;priority=6;break;
             case "failed":line=ChooseLine("codex-failed",new[]{"啧，出错了。换条路线。","这步没通，我重新规划。"});seconds=7;priority=5;break;
             case "completed":line=ChooseLine("codex-completed",new[]{"通关。任务已经完成。","搞定，来验收结果。"});seconds=7;priority=5;break;
             default:UpdateCodexTimerBubble(elapsed.Elapsed.TotalSeconds);return;
@@ -159,8 +159,16 @@ public partial class PetWindow {
         codexStateSpoken.Add(codexWorkState);codexStateBubblePending=false;SayCodex(line,seconds,priority);
         if(codexWorkState=="waiting-input"&&words.Text==line) {
             codexWaitingBubble=true;
-            Reply("知道了，去处理",delegate {codexWaitingBubble=false;bubblePriority=0;});
+            AddCodexApprovalReplies();
         }
+    }
+    void AddCodexApprovalReplies() {
+        Reply("前往授权",delegate {
+            if(TryActivateCodexWindow()) {codexWaitingBubble=false;bubblePriority=0;return;}
+            SayCodex("没找到 Codex 窗口，请先打开 Codex。",Double.PositiveInfinity,6);
+            codexWaitingBubble=true;AddCodexApprovalReplies();
+        });
+        Reply("知道了，稍等",delegate {codexWaitingBubble=false;bubblePriority=0;});
     }
     BitmapSource CodexWorkFrame(double now) {
         AnimationClip clip;
@@ -279,7 +287,10 @@ public partial class PetWindow {
         if(words.Text==timerText||codexTimerBubble||Double.IsPositiveInfinity(bubbleUntil))throw new Exception("Periodic thinking dialogue missing or persistent");
         CodexFormFrame(start+71,pack.Base);if(codexTimerBubble)throw new Exception("Thinking incorrectly restored the task timer");
         double waitingAt=start+72;ApplyCodexWorkState("waiting-input",waitingAt);SetFrame(CodexWorkFrame(waitingAt+.5));
-        if(!codexWaitingBubble||!Double.IsPositiveInfinity(bubbleUntil)||replies.Children.Count!=1||!bubble.IsHitTestVisible||!words.Text.Contains("Codex"))throw new Exception("Interactive waiting bubble missing");
+        if(!codexWaitingBubble||!Double.IsPositiveInfinity(bubbleUntil)||replies.Children.Count!=2||!bubble.IsHitTestVisible||words.Text!="别发呆了，快给我个权限。")throw new Exception("Interactive waiting bubble missing");
+        var approvalLabel=((TextBlock)((Button)replies.Children[0]).Content).Text;
+        var laterLabel=((TextBlock)((Button)replies.Children[1]).Content).Text;
+        if(approvalLabel!="前往授权"||laterLabel!="知道了，稍等"||CodexWindowScore("ChatGPT","Codex")<=CodexWindowScore("codex","" )||CodexWindowScore("chrome","ChatGPT")!=0||CodexWindowScore("ChatGPT","","WinUIDesktopWin32WindowClass",1200,800,false)==0||CodexWindowScore("ChatGPT","","WinUIDesktopWin32WindowClass",300,200,false)!=0||CodexWindowScore("codex","任务","ConsoleWindowClass",1200,800,false)!=0)throw new Exception("Codex approval window matching or reply labels failed");
         RenderDialogCheck(root,"waiting-input-dialog.png");
         SetCodexWorkStateAt("executing",waitingAt+1);
         if(codexWorkState!="waiting-input"||codexPendingWorkState!="executing"||!codexWorkClips["waiting-input"].Frames.Contains(CodexFormFrame(waitingAt+11.9,pack.Base)))throw new Exception("Waiting input pose did not hold long enough");
