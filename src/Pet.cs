@@ -283,7 +283,9 @@ public partial class PetWindow : Window {
             InitExperience(source.Handle);
             var area=Forms.Screen.PrimaryScreen.WorkingArea;
             var visible=VisibleFrameBounds(cachedBitmap);
+            bool wasAtOldRightEdge=prefs.Left>-90000&&Math.Abs(prefs.Left-(area.Right/dpiX-Width))<=6;
             Left=prefs.Left < -90000 ? area.Right/dpiX-visible.Right-18 : prefs.Left;
+            if(wasAtOldRightEdge)Left=area.Right/dpiX-visible.Right-3;
             SetPetWindowTop(prefs.Top < -90000 ? area.Bottom/dpiY-Height-20 : prefs.Top);
             Clamp();
         };
