@@ -221,8 +221,13 @@ public sealed class QuotaSidebar : IDisposable {
         if(primary!=null)percent.Inlines.Add(new System.Windows.Documents.Run("%") {FontSize=7,Foreground=new SolidColorBrush(Color.FromRgb(117,226,255)),BaselineAlignment=BaselineAlignment.Center});
         bean.Fill=BeanBrush(primary==null?(double?)null:primary.Remaining);
         bean.Opacity=stale ? .6 : 1;percent.Opacity=stale ? .65 : 1;
-        var values=enabled()?readings.OrderBy(x=>x.Bucket=="codex"?0:1).ThenBy(x=>x.Bucket).ThenBy(x=>x.Minutes).ToList():new List<QuotaReading>();
+        var values=enabled()?readings.OrderBy(x=>x.Bucket=="codex"?0:1).ThenBy(x=>x.Bucket).ThenBy(x=>x.IsCredits?2:x.Minutes==300?0:1).ToList():new List<QuotaReading>();
         foreach(var q in values) {
+            if(q.IsCredits) {
+                var creditLine=new DockPanel {Margin=new Thickness(0,1,0,11)};
+                var balance=Text(q.Unlimited?"无限":q.Balance,11);DockPanel.SetDock(balance,Dock.Right);creditLine.Children.Add(balance);
+                creditLine.Children.Add(Text("剩余额度"));rows.Children.Add(creditLine);continue;
+            }
             bool expired=q.ResetUtc<=DateTime.UtcNow;
             var line=new DockPanel();var amount=Text(expired?"待更新":"剩余 "+q.Remaining.ToString("0.#")+"%",11);DockPanel.SetDock(amount,Dock.Right);line.Children.Add(amount);
             line.Children.Add(Text((q.Bucket=="codex"?"":q.Bucket+" · ")+(q.Minutes==300?"5 小时":"每周")));rows.Children.Add(line);
@@ -230,7 +235,7 @@ public sealed class QuotaSidebar : IDisposable {
             track.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(expired?0:q.Remaining,GridUnitType.Star)});track.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(expired?100:100-q.Remaining,GridUnitType.Star)});
             track.Children.Add(new Border {Background=q.Remaining>=20&&q.Remaining<60?BeanBrush(q.Remaining):new SolidColorBrush(QuotaColor(q.Remaining)),CornerRadius=new CornerRadius(2)});rows.Children.Add(track);
             var until=q.ResetUtc-DateTime.UtcNow;
-            var reset=Text(expired?"已到重置时间，等待查询":q.Minutes==300?((int)until.TotalHours+"小时"+until.Minutes+"分后重置"):q.ResetUtc.ToLocalTime().ToString("MM-dd HH:mm")+" 重置",10);
+            var reset=Text(expired?"已到重置时间，等待查询":q.Minutes==300?q.ResetUtc.ToLocalTime().ToString("MM-dd HH:mm")+" 重置（"+((int)until.TotalHours)+"小时"+until.Minutes+"分后）":q.ResetUtc.ToLocalTime().ToString("MM-dd HH:mm")+" 重置",10);
             reset.Opacity=.75;reset.Margin=new Thickness(0,0,0,13);rows.Children.Add(reset);
         }
         if(values.Count==0)rows.Children.Add(Text(enabled()?"暂未取得额度数据":"额度查询已关闭",12));
@@ -279,7 +284,7 @@ public sealed class QuotaSidebar : IDisposable {
         }
         if(QuotaColor(60)!=QuotaColor(100)||QuotaColor(20)!=QuotaColor(59.9)||QuotaColor(19.9)!=QuotaColor(0)||QuotaColor(20)==QuotaColor(19.9))throw new Exception("sidebar thresholds");
         using(var view=new QuotaSidebar(()=>true,()=>true,.45,null,(a,b)=>{},false)) {
-            view.Update(new List<QuotaReading>{new QuotaReading {Bucket="codex",Minutes=300,Remaining=68,ResetUtc=DateTime.UtcNow.AddMinutes(102)},new QuotaReading {Bucket="codex",Minutes=10080,Remaining=42,ResetUtc=DateTime.UtcNow.AddDays(3)}});
+            view.Update(new List<QuotaReading>{new QuotaReading {Bucket="codex",Minutes=300,Remaining=68,ResetUtc=DateTime.UtcNow.AddMinutes(102)},new QuotaReading {Bucket="codex",Minutes=10080,Remaining=42,ResetUtc=DateTime.UtcNow.AddDays(3)},new QuotaReading {Bucket="codex",IsCredits=true,Balance="381.18",ResetUtc=DateTime.MaxValue}});
             if(view.PercentText()!="68%")throw new Exception("sidebar primary"); if(view.rowsViewport.Height<110||view.popup.Height<200)throw new Exception("sidebar sizes "+view.rowsViewport.Height+" / "+view.popup.Height);
             Directory.CreateDirectory(System.IO.Path.Combine(root,"qa"));
             Render(view.popup,root,"sidebar.png");Render(view.handle,root,"sidebar-handle.png"); var last=(FrameworkElement)view.rows.Children[view.rows.Children.Count-1];if(last.TranslatePoint(new Point(0,last.ActualHeight),view.rows).Y>view.rowsViewport.Height+1)throw new Exception("last quota row clipped");

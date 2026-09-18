@@ -268,7 +268,7 @@ public partial class PetWindow : Window {
         string warning=null;
         try { pack=LoadedPack.Load(String.IsNullOrEmpty(prefs.PackPath)?defaultPack:prefs.PackPath); }
         catch(Exception ex) { pack=LoadedPack.Load(defaultPack); prefs.PackPath=""; warning="自定义素材无法载入，已恢复默认形象。"; Debug.WriteLine(ex); }
-        Title="银狼 LV.999 桌宠 · 2.6.18 预览版"; WindowStyle=WindowStyle.None; ResizeMode=ResizeMode.NoResize;
+        Title="银狼 LV.999 桌宠 · 2.6.19 预览版"; WindowStyle=WindowStyle.None; ResizeMode=ResizeMode.NoResize;
         Icon=BitmapFrame.Create(new Uri(System.IO.Path.Combine(root,"assets","silver-wolf.ico")));
         AllowsTransparency=true; Background=Brushes.Transparent; ShowInTaskbar=false;ShowActivated=false; Topmost=prefs.Topmost;
         if(preview) { ShowInTaskbar=true; Title="银狼 LV.999 · 动作测试"; }
@@ -303,7 +303,7 @@ public partial class PetWindow : Window {
         Closing+=delegate { if(sidebar!=null)sidebar.Dispose();Save();CloseExperience(); timer.Stop(); companionTimer.Stop();if(activityPulse!=null)activityPulse.Dispose(); codexTimer.Stop();if(codex!=null)codex.Dispose(); Microsoft.Win32.SystemEvents.DisplaySettingsChanged-=DisplayChanged; if(settings!=null) settings.Close(); if(tray!=null) tray.Dispose(); if(trayIcon!=null)trayIcon.Dispose(); };
         if(!test) { CreateTray(); Loaded+=delegate { Say(warning??"玩家上线。戳我互动，右键打开菜单。",5,3,true); }; }
         if(!testing) { sidebar=new QuotaSidebar(()=>prefs.SidebarEnabled&&!QuietActive&&!manuallyHidden,()=>prefs.CodexUsage,prefs.SidebarPosition,prefs.SidebarScreen,(position,screen)=>{prefs.SidebarPosition=position;prefs.SidebarScreen=screen;Save();},true,SidebarObstacles,false,SidebarAnchor,prefs.SidebarDocked,v=>{prefs.SidebarDocked=v;Save();},SidebarGreet);StartCodex(); }
-        if(preview) { sidebar=new QuotaSidebar(()=>true,()=>true,.45,null,(position,screen)=>{},true,SidebarObstacles,true,SidebarAnchor,false,null,SidebarGreet);sidebar.Update(new List<QuotaReading>{new QuotaReading {Bucket="预览示例",Minutes=300,Remaining=68,ResetUtc=DateTime.UtcNow.AddMinutes(102)},new QuotaReading {Bucket="预览示例",Minutes=10080,Remaining=42,ResetUtc=DateTime.UtcNow.AddDays(3)}});sidebar.SetWorking(true); }
+        if(preview) { sidebar=new QuotaSidebar(()=>true,()=>true,.45,null,(position,screen)=>{},true,SidebarObstacles,true,SidebarAnchor,false,null,SidebarGreet);sidebar.Update(new List<QuotaReading>{new QuotaReading {Bucket="预览示例",Minutes=300,Remaining=68,ResetUtc=DateTime.UtcNow.AddMinutes(102)},new QuotaReading {Bucket="预览示例",Minutes=10080,Remaining=42,ResetUtc=DateTime.UtcNow.AddDays(3)},new QuotaReading {Bucket="预览示例",IsCredits=true,Balance="381.18",ResetUtc=DateTime.MaxValue}});sidebar.SetWorking(true); }
         InitCompanion();
     }
     void StartCodex() {
@@ -544,7 +544,10 @@ public partial class PetWindow : Window {
         if(!IsVisible||Double.IsNaN(Left)||Double.IsNaN(Top))return new Rect[0];
         var result=new List<Rect>();
         var character=SidebarAnchor();
-        if(codexFormWorking)character=new Rect(Left+14,PetTop+70,Math.Max(1,Width-28),prefs.Size);
+        if(codexFormWorking) {
+            var visible=VisibleFrameBounds(cachedBitmap);
+            character=new Rect(Left+visible.Left,PetTop+visible.Top,visible.Width,visible.Height);
+        }
         result.Add(character);
         if(bubble.Visibility==Visibility.Visible&&bubble.ActualWidth>0&&bubble.ActualHeight>0)
             result.Add(new Rect(Left+(Width-bubble.ActualWidth)/2,Top,bubble.ActualWidth,bubble.ActualHeight));
@@ -556,7 +559,7 @@ public partial class PetWindow : Window {
     void ShowSidebar() { prefs.SidebarEnabled=true;Save();if(sidebar!=null)sidebar.Expand(); }
     void CreateTray() {
         trayIcon=new System.Drawing.Icon(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"assets","silver-wolf.ico"),Forms.SystemInformation.SmallIconSize);
-        tray=new Forms.NotifyIcon { Icon=trayIcon, Text="银狼 LV.999 · v2.6.18 预览版 · 双击找回桌宠", Visible=true };
+        tray=new Forms.NotifyIcon { Icon=trayIcon, Text="银狼 LV.999 · v2.6.19 预览版 · 双击找回桌宠", Visible=true };
         var menu=new Forms.ContextMenuStrip();
         menu.Items.Add("显示 / 找回桌宠",null,delegate { Dispatcher.Invoke(new Action(Recover)); });
         menu.Items.Add("隐藏桌宠",null,delegate { Dispatcher.Invoke(new Action(HideManually)); });
@@ -787,7 +790,7 @@ public static class Program {
         try {
             bool created;
             using(var mutex=new System.Threading.Mutex(true,test?"Local\\SilverWolfPet.Test":preview?"Local\\SilverWolfPet.Preview":"Local\\SilverWolfPet.Desktop",out created)) {
-                if(!created) { if(!autoStart)MessageBox.Show("已有桌宠在运行。若要升级，请先在旧版托盘菜单点击退出，再启动 v2.6.18 预览版。","银狼 LV.999"); return 0; }
+                if(!created) { if(!autoStart)MessageBox.Show("已有桌宠在运行。若要升级，请先在旧版托盘菜单点击退出，再启动 v2.6.19 预览版。","银狼 LV.999"); return 0; }
                 var app=new Application { ShutdownMode=ShutdownMode.OnMainWindowClose };
                 var window=new PetWindow(root,test,preview); app.MainWindow=window;
                 if(test) { window.SelfTest(root); window.Close(); return 0; }

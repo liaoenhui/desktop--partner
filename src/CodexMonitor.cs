@@ -8,7 +8,15 @@ using System.Threading;
 using System.Web.Script.Serialization;
 
 namespace SilverWolfPet {
-public sealed class QuotaReading { public string Bucket;public int Minutes;public double Remaining;public DateTime ResetUtc; }
+public sealed class QuotaReading {
+    public string Bucket;
+    public int Minutes;
+    public double Remaining;
+    public DateTime ResetUtc;
+    public bool IsCredits;
+    public string Balance;
+    public bool Unlimited;
+}
 public sealed class CodexMonitor : IDisposable {
     sealed class PendingCompletion { public string Id;public DateTime ReadyUtc;public DateTime EventUtc;public bool Notify; }
     public volatile bool UsageEnabled=true, TasksEnabled=true;
@@ -88,8 +96,10 @@ public sealed class CodexMonitor : IDisposable {
         if(buckets==null||buckets.Count==0)buckets=new Dictionary<string,object>{{"codex",Get(result,"rateLimits")}};
         var summaries=new List<string>();var alerts=new List<string>();var readings=new List<QuotaReading>();
         var alertWindows=new Dictionary<string,QuotaReading>();
-        foreach(var bucket in buckets)foreach(string window in new[]{"primary","secondary"}) {
-            var rate=Obj(Get(Obj(bucket.Value),window));double used;long reset;int minutes;
+        foreach(var bucket in buckets) {
+            var bucketValue=Obj(bucket.Value);
+            foreach(string window in new[]{"primary","secondary"}) {
+            var rate=Obj(Get(bucketValue,window));double used;long reset;int minutes;
             if(rate==null||!Double.TryParse(Str(Get(rate,"usedPercent")),System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out used)||Double.IsNaN(used)||Double.IsInfinity(used)||used<0||used>100||!Int64.TryParse(Str(Get(rate,"resetsAt")),out reset)||!Int32.TryParse(Str(Get(rate,"windowDurationMins")),out minutes)||(minutes!=300&&minutes!=10080))continue;
             DateTime resetTime;try { resetTime=new DateTime(1970,1,1,0,0,0,DateTimeKind.Utc).AddSeconds(reset); }catch { continue; }
             if(resetTime<=DateTime.UtcNow)continue;
@@ -98,6 +108,13 @@ public sealed class CodexMonitor : IDisposable {
             summaries.Add(label+"：剩余 "+remaining.ToString("0.#")+"%\n重置："+resetTime.ToLocalTime().ToString("MM-dd HH:mm"));
             string alertKey=minutes+"/"+reset;QuotaReading candidate;
             if(!alertWindows.TryGetValue(alertKey,out candidate)||remaining<candidate.Remaining)alertWindows[alertKey]=new QuotaReading {Bucket=bucket.Key,Minutes=minutes,Remaining=remaining,ResetUtc=resetTime};
+            }
+            var credits=Obj(Get(bucketValue,"credits"));
+            if(credits!=null) {
+                bool unlimited;Boolean.TryParse(Str(Get(credits,"unlimited")),out unlimited);
+                decimal balance;bool hasBalance=Decimal.TryParse(Str(Get(credits,"balance")),System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out balance);
+                if(unlimited||hasBalance)readings.Add(new QuotaReading {Bucket=bucket.Key,IsCredits=true,Unlimited=unlimited,Balance=unlimited?"无限":balance.ToString("0.##",System.Globalization.CultureInfo.InvariantCulture),ResetUtc=DateTime.MaxValue});
+            }
         }
         foreach(var pair in alertWindows) {
             var q=pair.Value;string key="window/"+pair.Key,old;int previous=100;
@@ -265,6 +282,9 @@ public sealed class CodexMonitor : IDisposable {
             monitor.ApplyRates(rates(60,reset),true);monitor.ApplyRates(rates(61,reset),true);if(notices!=2)throw new Exception("quota repeated");
             monitor.ApplyRates(rates(97,reset),true);if(notices!=3)throw new Exception("quota severity jump missing");
             monitor.ApplyRates(Parse("{\"rateLimits\":{\"primary\":null}}"),true);if(notices!=3)throw new Exception("null quota alerted");
+            List<QuotaReading> creditReadings=null;monitor.Quotas=value=>creditReadings=value;
+            monitor.ApplyRates(Parse("{\"rateLimits\":{\"primary\":{\"usedPercent\":60,\"windowDurationMins\":300,\"resetsAt\":"+reset+"},\"credits\":{\"hasCredits\":true,\"unlimited\":false,\"balance\":\"381.1772210000\"}}}"),false);
+            var credit=creditReadings==null?null:creditReadings.FirstOrDefault(x=>x.IsCredits);if(credit==null||credit.Balance!="381.18")throw new Exception("credit balance missing");
             using(var restarted=new CodexMonitor(fixture,fixture)) { restarted.Notice=delegate { notices++; };restarted.ApplyRates(rates(97,reset),true);if(notices!=3)throw new Exception("quota repeated after restart");restarted.ApplyRates(rates(60,reset+3600),true);if(notices!=4)throw new Exception("quota rollover missing");
                 long weeklyReset=reset+7200;
                 var duplicateWeekly=Parse("{\"rateLimitsByLimitId\":{\"codex\":{\"secondary\":{\"usedPercent\":60,\"windowDurationMins\":10080,\"resetsAt\":"+weeklyReset+"}},\"other\":{\"secondary\":{\"usedPercent\":61,\"windowDurationMins\":10080,\"resetsAt\":"+weeklyReset+"}}}}");

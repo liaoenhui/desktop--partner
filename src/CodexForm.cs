@@ -13,16 +13,21 @@ public partial class PetWindow {
     BitmapSource[] codexFrames;
     Dictionary<string,AnimationClip> codexWorkClips;
     readonly HashSet<string> codexStateSpoken=new HashSet<string>();
-    bool codexFormWorking,codexTaskRunning,codexActivationAnnounced,codexCutinVisible,codexIntroComplete=true;
+    bool codexFormWorking,codexTaskRunning,codexActivationAnnounced,codexCutinVisible,codexPortalVisible,codexExitActive,codexIntroComplete=true;
     bool codexStateBubblePending,codexTimerBubble;
     string codexWorkState="thinking",codexPendingWorkState,codexIntroQueuedState;
     double codexWorkStateStart,codexTaskStart,codexPendingWorkAt,nextCodexThinkingLine,codexTimerResumeAt,codexIntroRelease,codexResultUntil,nextCodexIdleLine=Double.PositiveInfinity;
     int codexTimerShownSecond=-1;
-    double codexLastTaskEnd=Double.PositiveInfinity,codexFormStart=-100,codexFormEnd=-100;
+    double codexLastTaskEnd=Double.PositiveInfinity,codexFormStart=-100,codexFormEnd=-100,codexExitStart=-100;
     readonly Image cutin=new Image { IsHitTestVisible=false,Stretch=Stretch.Uniform,Opacity=0,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Bottom };
     readonly TranslateTransform cutinMove=new TranslateTransform();
     readonly Popup cutinPopup=new Popup { AllowsTransparency=true,StaysOpen=true,IsHitTestVisible=false,Placement=PlacementMode.Absolute };
     readonly Canvas cutinCanvas=new Canvas { IsHitTestVisible=false };
+    readonly Image exitPortal=new Image {IsHitTestVisible=false,Stretch=Stretch.Uniform,Opacity=0,RenderTransformOrigin=new Point(.5,.5)};
+    readonly ScaleTransform exitPortalScale=new ScaleTransform(1,1);
+    readonly RotateTransform exitPortalRotate=new RotateTransform();
+    readonly Popup exitPortalPopup=new Popup {AllowsTransparency=true,StaysOpen=true,IsHitTestVisible=false,Placement=PlacementMode.Absolute};
+    readonly Canvas exitPortalCanvas=new Canvas {IsHitTestVisible=false};
     static BitmapSource ReadFormImage(string path) {
         var image=new BitmapImage();image.BeginInit();image.UriSource=new Uri(path);image.CacheOption=BitmapCacheOption.OnLoad;image.EndInit();image.Freeze();return image;
     }
@@ -42,8 +47,11 @@ public partial class PetWindow {
         }
         cutin.Source=ReadFormImage(Path.Combine(dir,"ultimate-cutin-transparent.png"));cutin.RenderTransform=cutinMove;
         cutinCanvas.Children.Add(cutin);cutinPopup.Child=cutinCanvas;
-        Closing+=delegate {cutinPopup.IsOpen=false;};
-        IsVisibleChanged+=delegate {if(!IsVisible)cutinPopup.IsOpen=false;};
+        exitPortal.Source=ReadFormImage(Path.Combine(dir,"exit-portal.png"));
+        var portalTransforms=new TransformGroup();portalTransforms.Children.Add(exitPortalScale);portalTransforms.Children.Add(exitPortalRotate);exitPortal.RenderTransform=portalTransforms;
+        exitPortalCanvas.Children.Add(exitPortal);exitPortalPopup.Child=exitPortalCanvas;
+        Closing+=delegate {cutinPopup.IsOpen=false;exitPortalPopup.IsOpen=false;};
+        IsVisibleChanged+=delegate {if(!IsVisible){cutinPopup.IsOpen=false;exitPortalPopup.IsOpen=false;}};
     }
     static Rect BodyBounds(BitmapSource source) {
         var converted=new FormatConvertedBitmap(source,PixelFormats.Bgra32,null,0);
@@ -63,6 +71,7 @@ public partial class PetWindow {
         if(codexTaskRunning==working)return;
         codexTaskRunning=working;
         if(working) {
+            if(codexExitActive){codexExitActive=false;codexPortalVisible=false;exitPortal.Opacity=0;exitPortalPopup.IsOpen=false;pet.Opacity=1;}
             codexLastTaskEnd=Double.PositiveInfinity;
             double now=elapsed.Elapsed.TotalSeconds;bool entering=!codexFormWorking;
             codexStateSpoken.Clear();codexStateBubblePending=false;codexTimerBubble=false;codexTimerShownSecond=-1;codexPendingWorkState=null;codexWorkState="thinking";codexTaskStart=codexWorkStateStart=now;nextCodexThinkingLine=codexTaskStart+14+random.NextDouble()*8;codexTimerResumeAt=0;codexResultUntil=0;nextCodexIdleLine=Double.PositiveInfinity;
@@ -75,20 +84,44 @@ public partial class PetWindow {
         }
     }
     void ExitCodexForm() {
+        if(!codexFormWorking||codexExitActive)return;
+        codexExitActive=true;codexExitStart=codexFormEnd=elapsed.Elapsed.TotalSeconds;codexPortalVisible=false;
+        EnterCodexIdle(codexExitStart);SayCodex("行动结束，收工了。",1.15,6);
+    }
+    void CompleteCodexExit() {
         codexFormWorking=false;codexActivationAnnounced=false;codexCutinVisible=false;codexIntroComplete=true;codexIntroQueuedState=null;codexIntroRelease=0;codexStateBubblePending=false;codexTimerBubble=false;codexTimerShownSecond=-1;codexPendingWorkState=null;codexTimerResumeAt=0;codexResultUntil=0;nextCodexIdleLine=Double.PositiveInfinity;codexFormEnd=-100;cutin.Opacity=0;cutinPopup.IsOpen=false;
+        codexExitActive=false;codexPortalVisible=false;codexExitStart=-100;exitPortal.Opacity=0;exitPortalPopup.IsOpen=false;
         bubble.Visibility=Visibility.Collapsed;BubbleSpace(0);bubbleThemeWork=null;
         Enter("idle");SetFrame(pack.Base);previous.Source=null;previous.Opacity=0;pet.Opacity=1;ScheduleIdle(elapsed.Elapsed.TotalSeconds);
         // Keep actual task state: repeated true updates cannot immediately re-enter.
     }
     bool WorkFormReply() {
         if(!codexFormWorking)return false;
-        Enter("idle");SayCodex(ChooseLine("working-touch",new[]{"别碰我，在忙呢。","这关还没结束，等我一下。","别挡操作，满级玩家正在处理。"}),3,3);return true;
+        Enter("idle");SayCodex(ChooseLine("working-touch",new[]{"别闹了，在忙呢。","这关还没结束，等我一下。","别挡操作，满级玩家正在处理。"}),3,3);return true;
     }
     void SayCodex(string message,double seconds,int priority=3) {Say(message,seconds,priority,false,true);}
     void ApplyCodexCutinVisibility() {
-        if(!codexCutinVisible)return;
+        if(!codexCutinVisible&&!codexPortalVisible)return;
         previous.Opacity=0;
         pet.Opacity=0;
+    }
+    void ShowExitPortal(double now) {
+        double t=now-codexExitStart-.9;
+        if(t<0||t>=1.55){codexPortalVisible=false;exitPortal.Opacity=0;exitPortalPopup.IsOpen=false;return;}
+        codexPortalVisible=true;
+        double appear=Bound(t/.28,0,1),vanish=Bound((t-1.15)/.4,0,1);
+        double ease=appear*appear*(3-2*appear),outEase=vanish*vanish*(3-2*vanish);
+        double scale=.32+.73*ease-.98*outEase;
+        exitPortalScale.ScaleX=exitPortalScale.ScaleY=Math.Max(.06,scale);
+        exitPortalRotate.Angle=-2+4*Math.Sin(t*3.4);
+        exitPortal.Opacity=ease*(1-outEase);
+        var art=(BitmapSource)exitPortal.Source;double desiredHeight=prefs.Size*.98,artScale=desiredHeight/art.PixelHeight;
+        exitPortal.Width=art.PixelWidth*artScale;exitPortal.Height=desiredHeight;
+        Canvas.SetLeft(exitPortal,16);Canvas.SetTop(exitPortal,16);exitPortalCanvas.Width=exitPortal.Width+32;exitPortalCanvas.Height=exitPortal.Height+32;
+        var area=System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point((int)((Left+Width/2)*dpiX),(int)((PetTop+70+prefs.Size/2)*dpiY))).WorkingArea;
+        exitPortalPopup.HorizontalOffset=Bound(Left+Width/2-exitPortalCanvas.Width/2,area.Left/dpiX,area.Right/dpiX-exitPortalCanvas.Width);
+        exitPortalPopup.VerticalOffset=Bound(PetTop+70+prefs.Size/2-exitPortalCanvas.Height/2,area.Top/dpiY,area.Bottom/dpiY-exitPortalCanvas.Height);
+        if(!testing&&IsVisible)exitPortalPopup.IsOpen=true;
     }
     void SetCodexWorkState(string next) {
         SetCodexWorkStateAt(next,elapsed.Elapsed.TotalSeconds);
@@ -152,13 +185,19 @@ public partial class PetWindow {
         nextCodexIdleLine=now+60+random.NextDouble()*40;SayCodex(line,4.5,2);
     }
     BitmapSource CodexFormFrame(double now,BitmapSource daily) {
-        cutin.Opacity=0;
-        bool showCutin=codexFormWorking&&now-codexFormStart>=.55&&now-codexFormStart<1.65;
+        cutin.Opacity=0;exitPortal.Opacity=0;
+        bool showCutin=codexFormWorking&&!codexExitActive&&now-codexFormStart>=.55&&now-codexFormStart<1.65;
         codexCutinVisible=showCutin;
         if(!showCutin)cutinPopup.IsOpen=false;
         if(codexFrames==null||!String.IsNullOrEmpty(prefs.PackPath))return daily;
-        if(codexFormWorking&&!codexTaskRunning&&now-codexLastTaskEnd>=600)ExitCodexForm();
+        if(codexFormWorking&&!codexExitActive&&!codexTaskRunning&&now-codexLastTaskEnd>=600)ExitCodexForm();
         if(!codexFormWorking)return daily;
+        if(codexExitActive) {
+            double exitTime=now-codexExitStart;
+            if(exitTime<.9)return codexFrames[2];
+            if(exitTime<2.45){ShowExitPortal(now);return codexFrames[2];}
+            CompleteCodexExit();return daily;
+        }
         double t=now-codexFormStart;
         if(codexIntroComplete&&now>=codexIntroRelease&&codexPendingWorkState!=null&&now>=codexPendingWorkAt) {string pending=codexPendingWorkState;codexPendingWorkState=null;ApplyCodexWorkState(pending,now);}
         if(t>=.55&&t<1.65) {
@@ -238,7 +277,14 @@ public partial class PetWindow {
         if(!lastSpoken.ContainsKey("codex-idle")||bubble.Visibility!=Visibility.Visible||Double.IsPositiveInfinity(bubbleUntil))throw new Exception("Work-idle random dialogue missing");
         if(CodexFormFrame(ended+599,pack.Base)!=codexFrames[2])throw new Exception("Grace too short or work idle missing");
         SetCodexForm(true);if(start!=codexFormStart)throw new Exception("Repeated transform");
-        ExitCodexForm();SetCodexForm(true);if(codexFormWorking)throw new Exception("Manual exit undone");
+        ExitCodexForm();double exitAt=codexExitStart;
+        if(!codexExitActive||words.Text!="行动结束，收工了。")throw new Exception("Exit announcement missing");
+        CodexFormFrame(exitAt+1.3,pack.Base);pet.Opacity=previous.Opacity=1;ApplyCodexCutinVisibility();
+        if(!codexPortalVisible||exitPortal.Opacity<.8||pet.Opacity!=0||previous.Opacity!=0)throw new Exception("Exit portal missing or character still visible");
+        exitPortalCanvas.Measure(new Size(exitPortalCanvas.Width,exitPortalCanvas.Height));exitPortalCanvas.Arrange(new Rect(0,0,exitPortalCanvas.Width,exitPortalCanvas.Height));exitPortalCanvas.UpdateLayout();
+        var portalShot=new RenderTargetBitmap((int)Math.Ceiling(exitPortalCanvas.Width),(int)Math.Ceiling(exitPortalCanvas.Height),96,96,PixelFormats.Pbgra32);portalShot.Render(exitPortalCanvas);
+        var portalPng=new PngBitmapEncoder();portalPng.Frames.Add(BitmapFrame.Create(portalShot));using(var f=File.Create(Path.Combine(root,"qa","exit-portal.png")))portalPng.Save(f);
+        if(CodexFormFrame(exitAt+2.5,pack.Base)!=pack.Base||codexFormWorking||codexExitActive)throw new Exception("Manual portal exit did not restore daily form");
         SetCodexForm(false);SetCodexForm(true);if(!codexFormWorking)throw new Exception("New task failed");
         double secondStart=codexFormStart;CodexFormFrame(secondStart+5.3,pack.Base);CodexFormFrame(secondStart+7.2,pack.Base);
         SetCodexWorkStateAt("executing",secondStart+8);double operationStarted=codexWorkStateStart;SetCodexWorkStateAt("thinking",secondStart+8.1);
@@ -249,7 +295,8 @@ public partial class PetWindow {
         if(!codexWorkClips["failed"].Frames.Contains(CodexFormFrame(failedAt+7.9,pack.Base)))throw new Exception("Failed pose ended too early");
         if(CodexFormFrame(failedAt+8.1,pack.Base)!=codexFrames[2]||codexWorkState!="idle")throw new Exception("Failed pose did not return to work idle");
         TouchReaction(TouchZone.Head,"tap");if(state!="idle")throw new Exception("Work touch started normal action");
-        SetCodexForm(false);ended=codexLastTaskEnd;CodexFormFrame(ended+601,pack.Base);if(codexFormWorking)throw new Exception("Grace did not expire");
+        SetCodexForm(false);double autoNow=elapsed.Elapsed.TotalSeconds;codexLastTaskEnd=autoNow-601;CodexFormFrame(autoNow,pack.Base);if(!codexExitActive||!codexFormWorking)throw new Exception("Grace did not begin portal exit");
+        CodexFormFrame(autoNow+3,pack.Base);if(codexFormWorking||codexExitActive)throw new Exception("Grace portal exit did not finish");
         var visual=new DrawingVisual();using(var dc=visual.RenderOpen()) {
             dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(34,38,52)),null,new Rect(0,0,760,240));
             for(int i=0;i<2;i++){double size=i==0?160:180;dc.DrawImage(pack.Base,new Rect(i*380+8,24,size*pack.Base.PixelWidth/pack.Base.PixelHeight,size));dc.DrawImage(codexFrames[2],new Rect(i*380+85,24,size*1.6,size));}
@@ -283,7 +330,7 @@ public partial class PetWindow {
         cutinCanvas.Measure(new Size(cutinCanvas.Width,cutinCanvas.Height));cutinCanvas.Arrange(new Rect(0,0,cutinCanvas.Width,cutinCanvas.Height));cutinCanvas.UpdateLayout();
         var shot=new RenderTargetBitmap((int)Math.Ceiling(cutinCanvas.Width),(int)Math.Ceiling(cutinCanvas.Height),96,96,PixelFormats.Pbgra32);shot.Render(cutinCanvas);
         var output=new PngBitmapEncoder();output.Frames.Add(BitmapFrame.Create(shot));using(var f=File.Create(Path.Combine(root,"qa","cutin.png")))output.Save(f);
-        ExitCodexForm();SetCodexForm(false);Say("日常气泡样式检查",3);
+        CompleteCodexExit();SetCodexForm(false);Say("日常气泡样式检查",3);
         if(bubbleThemeWork!=false||bubblePanel.Effect!=null||bubbleTail.Visibility!=Visibility.Collapsed||!(bubblePanel.BorderBrush is SolidColorBrush))throw new Exception("Daily bubble theme was not restored");
     }
 }
