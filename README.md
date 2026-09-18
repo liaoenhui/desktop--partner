@@ -1,3 +1,7 @@
+## 2.6.13 可见边缘贴屏修正
+
+桌宠拖到屏幕边缘时改用当前动作帧的真实可见像素计算边界，不再把素材中的透明留白算进角色宽度。常态按身体与头发贴边，无敌玩家形态按光翼和尾巴贴边，右侧仅保留约 3 个逻辑像素的安全间距；默认位置和“找回桌宠”也采用同一规则。骇客豆继续跟随角色，但不参与桌宠拖动边界计算。
+
 ## 2.6.12 立绘比例与侧栏位置修正
 
 立绘出现时会完全隐藏桌宠角色层，避免两种形象叠加。立绘改为按照包含背景特效的完整画面缩放和居中，最大边约等于当前桌宠尺寸，不再按立绘中的人物高度放大。骇客豆跟随模式只用角色实际范围参与避让，修复悬浮额度面板被透明窗口边缘推到高处的问题。
@@ -12,7 +16,7 @@
 
 ## 下载即用（Windows 10/11 x64）
 
-[下载最新版 2.6.12 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.12-preview-Windows-x64.zip)
+[下载最新版 2.6.13 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.13-preview-Windows-x64.zip)
 
 无需编译或安装依赖。下载后完整解压，双击 SilverWolfPet.exe 即可运行。已有旧版时先从托盘退出；保留同目录 assets 文件夹。当前为变身功能试用版。
 
