@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Web.Script.Serialization;
+using System.Text.RegularExpressions;
 
 namespace SilverWolfPet {
 public sealed class QuotaReading { public string Bucket;public int Minutes;public double Remaining;public DateTime ResetUtc; }
@@ -17,6 +18,7 @@ public sealed class CodexMonitor : IDisposable {
     public Action<List<QuotaReading>> Quotas;
     public Action<string> Failure;
     public Action<bool> Working;
+    public Action<string> TaskState;
     readonly ManualResetEvent stop=new ManualResetEvent(false);
     readonly string home, ledgerPath;
     readonly Dictionary<string,string> ledger=new Dictionary<string,string>();
@@ -126,6 +128,31 @@ public sealed class CodexMonitor : IDisposable {
         if(line.IndexOf(kind,StringComparison.Ordinal)<0)return null;
         try {var root=Parse(line);if(Str(Get(root,"type"))!="event_msg")return null;var payload=Obj(Get(root,"payload"));if(Str(Get(payload,"type"))!=kind)return null;string id=Str(Get(payload,"turn_id"));return String.IsNullOrEmpty(id)?"current":id;}catch{return null;}
     }
+    static bool FailedOutput(string value) {
+        if(String.IsNullOrEmpty(value))return false;
+        return value.IndexOf("\"isError\":true",StringComparison.OrdinalIgnoreCase)>=0||
+            Regex.IsMatch(value,"\"(?:exit_code|exitCode)\"\\s*:\\s*[1-9][0-9]*",RegexOptions.IgnoreCase);
+    }
+    public static string StateForLine(string line) {
+        try {
+            var root=Parse(line);var payload=Obj(Get(root,"payload"));string type=Str(Get(payload,"type"));
+            if(type=="task_started")return "thinking";
+            if(type=="turn_aborted")return "failed";
+            if(type=="task_complete")return null; // Published only after debounce confirms the task really ended.
+            if(type=="custom_tool_call"||type=="function_call") {
+                string name=Str(Get(payload,"name")),arguments=Str(Get(payload,"input"))+" "+Str(Get(payload,"arguments"));
+                if(name.IndexOf("request_user_input",StringComparison.OrdinalIgnoreCase)>=0||arguments.IndexOf("require_escalated",StringComparison.OrdinalIgnoreCase)>=0)return "waiting-input";
+                return "executing";
+            }
+            if(type=="custom_tool_call_output"||type=="function_call_output")return FailedOutput(Str(Get(payload,"output")))?"failed":"thinking";
+            if(type=="reasoning"||type=="agent_message")return "thinking";
+            if(type=="item_completed") {
+                var item=Obj(Get(payload,"item"));string itemType=Str(Get(item,"type"));
+                if(itemType=="CommandExecution"||itemType=="McpToolCall"||itemType=="FileChange")return "thinking";
+            }
+        }catch { }
+        return null;
+    }
     void PublishWorking(bool previous) {if(previous!=active.Any()&&Working!=null)Working(active.Any());}
     void ExpireInactive() {
         bool previous=active.Any();DateTime cutoff=DateTime.UtcNow.AddMinutes(-30);
@@ -145,6 +172,7 @@ public sealed class CodexMonitor : IDisposable {
             string current;if(active.TryGetValue(file,out current)&&(pendingCompletion.Id=="current"||current==pendingCompletion.Id))active.Remove(file);
             pendingCompletions.Remove(file);
             if(!completed.Add(file+"/"+pendingCompletion.Id)||!pendingCompletion.Notify||!TasksEnabled)continue;
+            if(TaskState!=null)TaskState("completed");
             string name=Path.GetFileNameWithoutExtension(file);name=name.Length>36?name.Substring(name.Length-36):name;
             Alert("Codex 任务运行结束","本轮运行结束，去看看战利品吧。\n任务尾号 "+name.Substring(Math.Max(0,name.Length-8))+" · 请在 Codex 验收结果");
         }
@@ -174,6 +202,8 @@ public sealed class CodexMonitor : IDisposable {
                             string current;
                             if(aborted!=null&&active.TryGetValue(file,out current)&&(aborted=="current"||current==aborted)) {active.Remove(file);pendingCompletions.Remove(file);}
                             PublishWorking(wasWorking);
+                            string inferred=StateForLine(line);
+                            if(!baseline&&fresh&&TasksEnabled&&inferred!=null&&(taskStarted!=null||aborted!=null||active.ContainsKey(file))&&TaskState!=null)TaskState(inferred);
                             DateTime timestamp=DateTime.MinValue;
                             if(id!=null&&(!DateTime.TryParse(Str(Get(Parse(line),"timestamp")),null,System.Globalization.DateTimeStyles.RoundtripKind,out timestamp)||timestamp.ToUniversalTime()<started))id=null;
                             if(!baseline&&!String.IsNullOrEmpty(id)&&active.TryGetValue(file,out current)&&(id=="current"||current==id))pendingCompletions[file]=new PendingCompletion {Id=id,EventUtc=timestamp.ToUniversalTime(),ReadyUtc=DateTime.UtcNow.AddSeconds(8),Notify=TasksEnabled};
@@ -204,6 +234,7 @@ public sealed class CodexMonitor : IDisposable {
     public static void SelfTest(string root) {
         if(Level(50)!=100||Level(49)!=50||Level(20)!=50||Level(19)!=20||Level(5)!=20||Level(4)!=5||Level(0)!=0||ShouldAlert(19,20)||!ShouldAlert(4,50))throw new Exception("quota thresholds failed");
         if(CompletionId("{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"test\"}}")!="test"||StartedId("{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"go\"}}")!="go"||EndedId("{\"type\":\"event_msg\",\"payload\":{\"type\":\"turn_aborted\",\"turn_id\":\"stop\"}}")!="stop"||CompletionId("not json")!=null)throw new Exception("task event parsing failed");
+        if(StateForLine("{\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call\",\"name\":\"exec\",\"input\":\"{}\"}}")!="executing"||StateForLine("{\"type\":\"response_item\",\"payload\":{\"type\":\"function_call\",\"name\":\"request_user_input_async\"}}")!="waiting-input"||StateForLine("{\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call_output\",\"output\":\"{\\\"exit_code\\\":1}\"}}")!="failed")throw new Exception("task state classification failed");
         string fixture=Path.Combine(root,"qa","codex-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Path.Combine(fixture,"sessions"));
         string log=Path.Combine(fixture,"sessions","rollout-test.jsonl");
         Func<string,string,string> record=(id,time)=>"{\"timestamp\":\""+time+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\""+id+"\"}}\n";
@@ -211,20 +242,20 @@ public sealed class CodexMonitor : IDisposable {
         File.AppendAllText(log,"{\"timestamp\":\""+DateTime.UtcNow.AddMinutes(-2).ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"abandoned-history\"}}\n");
         int notices=0;
         using(var monitor=new CodexMonitor(fixture,fixture)) {
-            var states=new List<bool>();monitor.Working=v=>states.Add(v);monitor.Notice=delegate { notices++; };monitor.Scan(true);monitor.Scan(false);if(notices!=0)throw new Exception("historical completion replayed");
+            var states=new List<bool>();var taskStates=new List<string>();monitor.Working=v=>states.Add(v);monitor.TaskState=v=>taskStates.Add(v);monitor.Notice=delegate { notices++; };monitor.Scan(true);monitor.Scan(false);if(notices!=0)throw new Exception("historical completion replayed");
             if(states.Count!=0||monitor.active.Count!=0)throw new Exception("historical start activated working state");
             File.WriteAllText(Path.Combine(fixture,"sessions","imported.jsonl"),"{\"timestamp\":\""+DateTime.UtcNow.AddMinutes(-2).ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"imported-old\"}}\n");monitor.Scan(false);
             if(states.Count!=0)throw new Exception("imported old start activated working state");
-            File.AppendAllText(log,"{\"timestamp\":\""+DateTime.UtcNow.ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"live\"}}\n");monitor.Scan(false);if(states.Count==0||!states.Last())throw new Exception("working state did not start");
+            File.AppendAllText(log,"{\"timestamp\":\""+DateTime.UtcNow.ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"live\"}}\n");monitor.Scan(false);if(states.Count==0||!states.Last()||taskStates.Last()!="thinking")throw new Exception("working state did not start");
             File.SetLastWriteTimeUtc(log,DateTime.UtcNow.AddMinutes(-1));monitor.Scan(false);if(!states.Last())throw new Exception("working state expired during a quiet task");
             File.SetLastWriteTimeUtc(log,DateTime.UtcNow.AddMinutes(-31));monitor.Scan(false);if(states.Last())throw new Exception("abandoned working state did not expire");
             File.AppendAllText(log,"{\"timestamp\":\""+DateTime.UtcNow.ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"live\"}}\n");monitor.Scan(false);if(!states.Last())throw new Exception("working state did not restart");
-            File.AppendAllText(log,"{\"timestamp\":\""+DateTime.UtcNow.ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"turn_aborted\",\"turn_id\":\"live\"}}\n");monitor.Scan(false);if(states.Last())throw new Exception("working state did not stop");
+            File.AppendAllText(log,"{\"timestamp\":\""+DateTime.UtcNow.ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"turn_aborted\",\"turn_id\":\"live\"}}\n");monitor.Scan(false);if(states.Last()||taskStates.Last()!="failed")throw new Exception("working state did not stop");
             string completion=record("new",DateTime.UtcNow.ToString("o"));
             File.AppendAllText(log,"{\"timestamp\":\""+DateTime.UtcNow.ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"new\"}}\n");monitor.Scan(false);
             File.AppendAllText(log,completion.Substring(0,completion.Length-1));monitor.Scan(false);if(notices!=0)throw new Exception("partial line consumed");
             File.AppendAllText(log,"\n");monitor.Scan(false);if(notices!=0||!states.Last())throw new Exception("completion was not debounced");
-            monitor.pendingCompletions[log].ReadyUtc=DateTime.UtcNow.AddSeconds(-1);File.SetLastWriteTimeUtc(log,DateTime.UtcNow.AddSeconds(-5));monitor.FlushCompletions(DateTime.UtcNow);if(notices!=1||states.Last())throw new Exception("confirmed completion missing");
+            monitor.pendingCompletions[log].ReadyUtc=DateTime.UtcNow.AddSeconds(-1);File.SetLastWriteTimeUtc(log,DateTime.UtcNow.AddSeconds(-5));monitor.FlushCompletions(DateTime.UtcNow);if(notices!=1||states.Last()||taskStates.Last()!="completed")throw new Exception("confirmed completion missing");
             File.AppendAllText(log,completion);monitor.Scan(false);if(notices!=1)throw new Exception("duplicate completion");
             File.AppendAllText(log,"{\"timestamp\":\""+DateTime.UtcNow.ToString("o")+"\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"muted\"}}\n");monitor.Scan(false);monitor.TasksEnabled=false;File.AppendAllText(log,record("muted",DateTime.UtcNow.ToString("o")));monitor.Scan(false);monitor.pendingCompletions[log].ReadyUtc=DateTime.UtcNow.AddSeconds(-1);File.SetLastWriteTimeUtc(log,DateTime.UtcNow.AddSeconds(-5));monitor.FlushCompletions(DateTime.UtcNow);monitor.TasksEnabled=true;if(notices!=1||states.Last())throw new Exception("muted completion replayed or working state stuck");
             File.WriteAllText(Path.Combine(fixture,"sessions","history.jsonl"),record("history",DateTime.UtcNow.AddHours(-1).ToString("o")));monitor.Scan(false);if(notices!=1)throw new Exception("imported history replayed");

@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Linq;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -9,7 +11,12 @@ using System.Windows.Media.Imaging;
 namespace SilverWolfPet {
 public partial class PetWindow {
     BitmapSource[] codexFrames;
+    Dictionary<string,AnimationClip> codexWorkClips;
+    readonly HashSet<string> codexStateSpoken=new HashSet<string>();
     bool codexFormWorking,codexTaskRunning,codexActivationAnnounced,codexCutinVisible;
+    bool codexStateBubblePending;
+    string codexWorkState="thinking";
+    double codexWorkStateStart;
     double codexLastTaskEnd=Double.PositiveInfinity,codexFormStart=-100,codexFormEnd=-100;
     readonly Image cutin=new Image { IsHitTestVisible=false,Stretch=Stretch.Uniform,Opacity=0,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Bottom };
     readonly TranslateTransform cutinMove=new TranslateTransform();
@@ -24,6 +31,14 @@ public partial class PetWindow {
         var daily=BodyBounds(pack.Base);
         double height=daily.Height*800/pack.Base.PixelHeight,feet=daily.Bottom*800/pack.Base.PixelHeight;
         codexFrames=new[]{pack.Base,RegisterForm(cross,height,feet),RegisterForm(ReadFormImage(Path.Combine(dir,"invincible-clean-foot.png")),height,feet)};
+        codexWorkClips=new Dictionary<string,AnimationClip>();
+        string work=Path.Combine(dir,"work-states");
+        foreach(var spec in new[]{
+            new {Key="thinking",Ms=620},new {Key="executing",Ms=260},new {Key="waiting-input",Ms=650},new {Key="failed",Ms=230},new {Key="completed",Ms=430}}) {
+            var one=RegisterForm(ReadFormImage(Path.Combine(work,spec.Key+"-frame-1.png")),height,feet);
+            var two=RegisterForm(ReadFormImage(Path.Combine(work,spec.Key+"-frame-2.png")),height,feet);
+            codexWorkClips[spec.Key]=new AnimationClip {Frames=new[]{one,two,two,one},Milliseconds=new[]{spec.Ms,spec.Ms,spec.Ms,spec.Ms},Loop=true};
+        }
         cutin.Source=ReadFormImage(Path.Combine(dir,"ultimate-cutin-transparent.png"));cutin.RenderTransform=cutinMove;
         cutinCanvas.Children.Add(cutin);cutinPopup.Child=cutinCanvas;
         Closing+=delegate {cutinPopup.IsOpen=false;};
@@ -48,11 +63,12 @@ public partial class PetWindow {
         codexTaskRunning=working;
         if(working) {
             codexLastTaskEnd=Double.PositiveInfinity;
+            codexStateSpoken.Clear();codexStateBubblePending=true;codexWorkState="thinking";codexWorkStateStart=elapsed.Elapsed.TotalSeconds;
             if(!codexFormWorking){codexFormWorking=true;codexActivationAnnounced=false;codexFormStart=elapsed.Elapsed.TotalSeconds;Enter("idle");ScheduleIdle(elapsed.Elapsed.TotalSeconds);}
         } else codexLastTaskEnd=elapsed.Elapsed.TotalSeconds;
     }
     void ExitCodexForm() {
-        codexFormWorking=false;codexActivationAnnounced=false;codexCutinVisible=false;codexFormEnd=-100;cutin.Opacity=0;cutinPopup.IsOpen=false;
+        codexFormWorking=false;codexActivationAnnounced=false;codexCutinVisible=false;codexStateBubblePending=false;codexFormEnd=-100;cutin.Opacity=0;cutinPopup.IsOpen=false;
         Enter("idle");SetFrame(pack.Base);previous.Source=null;previous.Opacity=0;pet.Opacity=1;ScheduleIdle(elapsed.Elapsed.TotalSeconds);
         // Keep actual task state: repeated true updates cannot immediately re-enter.
     }
@@ -64,6 +80,28 @@ public partial class PetWindow {
         if(!codexCutinVisible)return;
         previous.Opacity=0;
         pet.Opacity=0;
+    }
+    void SetCodexWorkState(string next) {
+        if(codexWorkClips==null||String.IsNullOrEmpty(next)||!codexWorkClips.ContainsKey(next))return;
+        if(codexWorkState==next)return;
+        codexWorkState=next;codexWorkStateStart=elapsed.Elapsed.TotalSeconds;codexStateBubblePending=!codexStateSpoken.Contains(next);
+        if(codexFormWorking&&elapsed.Elapsed.TotalSeconds-codexFormStart>=1.65)SayCodexWorkState();
+    }
+    void SayCodexWorkState() {
+        if(!codexStateBubblePending||codexStateSpoken.Contains(codexWorkState))return;
+        string line;double seconds;int priority;
+        switch(codexWorkState) {
+            case "executing":line=ChooseLine("codex-executing",new[]{"操作中，别挡屏幕。","指令收到，开始跑流程。"});seconds=4;priority=3;break;
+            case "waiting-input":line=ChooseLine("codex-waiting",new[]{"轮到你了，给个指令。","这里需要你的选择。"});seconds=10;priority=5;break;
+            case "failed":line=ChooseLine("codex-failed",new[]{"啧，出错了。换条路线。","这步没通，我重新规划。"});seconds=7;priority=5;break;
+            case "completed":line=ChooseLine("codex-completed",new[]{"通关。任务已经完成。","搞定，来验收结果。"});seconds=7;priority=5;break;
+            default:line=ChooseLine("codex-thinking",new[]{"嗯……让我算算。","先别催，正在找最优解。"});seconds=4;priority=3;break;
+        }
+        codexStateSpoken.Add(codexWorkState);codexStateBubblePending=false;Say(line,seconds,priority);
+    }
+    BitmapSource CodexWorkFrame(double now) {
+        AnimationClip clip;
+        return codexWorkClips!=null&&codexWorkClips.TryGetValue(codexWorkState,out clip)?clip.At(Math.Max(0,now-codexWorkStateStart)):codexFrames[2];
     }
     BitmapSource CodexFormFrame(double now,BitmapSource daily) {
         cutin.Opacity=0;
@@ -97,23 +135,25 @@ public partial class PetWindow {
             codexActivationAnnounced=true;
             Say("无敌玩家，启动！",4,4);
         }
-        return codexFrames[2];
+        if(codexStateBubblePending&&t>=4.8)SayCodexWorkState();
+        return CodexWorkFrame(now);
     }
     void TestCodexForm(string root) {
         var artCheck=new FormatConvertedBitmap((BitmapSource)cutin.Source,PixelFormats.Bgra32,null,0);
         byte[] artPixels=new byte[artCheck.PixelWidth*artCheck.PixelHeight*4];artCheck.CopyPixels(artPixels,artCheck.PixelWidth*4,0);
         int clear=0;for(int i=3;i<artPixels.Length;i+=4)if(artPixels[i]<10)clear++;
         if(clear<artCheck.PixelWidth*artCheck.PixelHeight/5)throw new Exception("Cutin background is not transparent");
-        if(codexFrames==null||codexFrames.Length!=3||!Object.ReferenceEquals(codexFrames[0],pack.Base))throw new Exception("Original daily frame not preserved");
+        if(codexFrames==null||codexFrames.Length!=3||!Object.ReferenceEquals(codexFrames[0],pack.Base)||codexWorkClips==null||codexWorkClips.Count!=5||codexWorkClips.Any(x=>x.Value.Frames.Length!=4||x.Value.Frames.Distinct().Count()!=2))throw new Exception("Original daily frame or work animations missing");
         if(codexFormWorking)throw new Exception("Started in work form without event");
         SetCodexForm(true);double start=codexFormStart;
         if(CodexFormFrame(start+.3,pack.Base)!=codexFrames[1])throw new Exception("Cross pose missing");
         CodexFormFrame(start+.95,pack.Base);pet.Opacity=previous.Opacity=1;ApplyCodexCutinVisibility();
         if(cutin.Opacity<.9||!codexCutinVisible||pet.Opacity!=0||previous.Opacity!=0||Math.Max(cutin.Width,cutin.Height)>prefs.Size*1.021)throw new Exception("Cutin missing, oversized, or character still visible");
-        if(CodexFormFrame(start+2,pack.Base)!=codexFrames[2]||cutin.Opacity!=0||codexCutinVisible||words.Text!="无敌玩家，启动！")throw new Exception("Final form announcement missing");
+        var finalFrame=CodexFormFrame(start+2,pack.Base);
+        if(!codexWorkClips["thinking"].Frames.Contains(finalFrame)||cutin.Opacity!=0||codexCutinVisible||words.Text!="无敌玩家，启动！")throw new Exception("Final form announcement or work animation missing");
         double announcedUntil=bubbleUntil;CodexFormFrame(start+3,pack.Base);if(bubbleUntil!=announcedUntil)throw new Exception("Final form announcement repeated");
         SetCodexForm(false);double ended=codexLastTaskEnd;
-        if(CodexFormFrame(ended+599,pack.Base)!=codexFrames[2])throw new Exception("Grace too short");
+        if(!codexWorkClips["thinking"].Frames.Contains(CodexFormFrame(ended+599,pack.Base)))throw new Exception("Grace too short");
         SetCodexForm(true);if(start!=codexFormStart)throw new Exception("Repeated transform");
         ExitCodexForm();SetCodexForm(true);if(codexFormWorking)throw new Exception("Manual exit undone");
         SetCodexForm(false);SetCodexForm(true);if(!codexFormWorking)throw new Exception("New task failed");
@@ -134,6 +174,18 @@ public partial class PetWindow {
         }
         var compare=new RenderTargetBitmap(900,430,96,96,PixelFormats.Pbgra32);compare.Render(comparison);
         var comparePng=new PngBitmapEncoder();comparePng.Frames.Add(BitmapFrame.Create(compare));using(var f=File.Create(Path.Combine(root,"qa","daily-cross-working.png")))comparePng.Save(f);
+        var stateNames=new[]{"thinking","executing","waiting-input","failed","completed"};
+        var stateSheet=new DrawingVisual();using(var dc=stateSheet.RenderOpen()) {
+            dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(34,38,52)),null,new Rect(0,0,1000,440));
+            for(int row=0;row<2;row++)for(int col=0;col<stateNames.Length;col++) {
+                double size=row==0?160:180;var clip=codexWorkClips[stateNames[col]];var frame=clip.Frames[row==0?0:1];double w=size*frame.PixelWidth/frame.PixelHeight;
+                dc.DrawImage(frame,new Rect(col*200+(200-w)/2,row*220+12,w,size));
+                var label=new FormattedText(stateNames[col]+" · "+size.ToString("0"),System.Globalization.CultureInfo.InvariantCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI"),13,Brushes.White);
+                dc.DrawText(label,new Point(col*200+(200-label.Width)/2,row*220+184));
+            }
+        }
+        var statesSample=new RenderTargetBitmap(1000,440,96,96,PixelFormats.Pbgra32);statesSample.Render(stateSheet);
+        var statesPng=new PngBitmapEncoder();statesPng.Frames.Add(BitmapFrame.Create(statesSample));using(var f=File.Create(Path.Combine(root,"qa","work-states-size-check.png")))statesPng.Save(f);
         SetCodexForm(true);bubble.Visibility=Visibility.Collapsed;BubbleSpace(0);
         SetFrame(CodexFormFrame(codexFormStart+.95,pack.Base));previous.Opacity=0;pet.Opacity=1;
         Scene.Measure(new Size(Width,Height));Scene.Arrange(new Rect(0,0,Width,Height));Scene.UpdateLayout();

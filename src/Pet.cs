@@ -221,7 +221,9 @@ public partial class PetWindow : Window {
     public readonly Grid Scene = new Grid();
     readonly Image pet = new Image { Stretch = Stretch.Uniform };
     readonly Image previous = new Image { Stretch = Stretch.Uniform, IsHitTestVisible=false, Opacity=0 };
-    readonly Border bubble = new Border { Background = new SolidColorBrush(Color.FromRgb(30,26,53)), CornerRadius = new CornerRadius(14), BorderBrush = new SolidColorBrush(Color.FromRgb(152,130,250)), BorderThickness = new Thickness(1), Padding = new Thickness(12,8,12,8), VerticalAlignment = VerticalAlignment.Top, HorizontalAlignment = HorizontalAlignment.Center, MaxWidth = 265, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+    readonly Grid bubble = new Grid { VerticalAlignment = VerticalAlignment.Top, HorizontalAlignment = HorizontalAlignment.Center, MaxWidth = 265, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+    readonly Border bubblePanel = new Border { CornerRadius = new CornerRadius(18), BorderThickness = new Thickness(1.25), Padding = new Thickness(14,11,14,11) };
+    readonly System.Windows.Shapes.Path bubbleTail = new System.Windows.Shapes.Path { Width=20,Height=11,Stretch=Stretch.Fill,HorizontalAlignment=HorizontalAlignment.Center,Data=Geometry.Parse("M0,0 L20,0 L10,11 Z") };
     readonly TextBlock words = new TextBlock { Foreground = Brushes.White, FontSize = 13, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center };
     readonly ScaleTransform scale = new ScaleTransform(1,1);
     readonly RotateTransform rotate = new RotateTransform();
@@ -266,7 +268,7 @@ public partial class PetWindow : Window {
         string warning=null;
         try { pack=LoadedPack.Load(String.IsNullOrEmpty(prefs.PackPath)?defaultPack:prefs.PackPath); }
         catch(Exception ex) { pack=LoadedPack.Load(defaultPack); prefs.PackPath=""; warning="自定义素材无法载入，已恢复默认形象。"; Debug.WriteLine(ex); }
-        Title="银狼 LV.999 桌宠 · 2.6.13 预览版"; WindowStyle=WindowStyle.None; ResizeMode=ResizeMode.NoResize;
+        Title="银狼 LV.999 桌宠 · 2.6.14 预览版"; WindowStyle=WindowStyle.None; ResizeMode=ResizeMode.NoResize;
         Icon=BitmapFrame.Create(new Uri(System.IO.Path.Combine(root,"assets","silver-wolf.ico")));
         AllowsTransparency=true; Background=Brushes.Transparent; ShowInTaskbar=false;ShowActivated=false; Topmost=prefs.Topmost;
         if(preview) { ShowInTaskbar=true; Title="银狼 LV.999 · 动作测试"; }
@@ -309,10 +311,12 @@ public partial class PetWindow : Window {
         codex.Quotas=delegate(List<QuotaReading> value) { Dispatcher.BeginInvoke(new Action(delegate {if(sidebar!=null)sidebar.Update(value);})); };
         codex.Failure=delegate(string value) { Dispatcher.BeginInvoke(new Action(delegate {if(sidebar!=null)sidebar.Fail(value);})); };
         codex.Working=delegate(bool value) { Dispatcher.BeginInvoke(new Action(delegate {if(sidebar!=null)sidebar.SetWorking(value);SetCodexForm(value);})); };
+        codex.TaskState=delegate(string value) { Dispatcher.BeginInvoke(new Action(delegate {SetCodexWorkState(value);})); };
         codex.UsageEnabled=prefs.CodexUsage;codex.TasksEnabled=prefs.CodexTasks;
         codex.Status=delegate(string status) { Dispatcher.BeginInvoke(new Action(delegate { codexStatus=status;if(codexStatusText!=null)codexStatusText.Text=status; })); };
         codex.Notice=delegate(string title,string message) { Dispatcher.BeginInvoke(new Action(delegate {
             if(Muted("codex"))return;
+            if(title=="Codex 任务运行结束"&&IsVisible&&(codexFormWorking||codexWorkState=="completed"))return;
             if(QuietActive) { if(prefs.ImportantDuringQuiet&&tray!=null)tray.ShowBalloonTip(10000,title,message,Forms.ToolTipIcon.Info);else if(codexNotices.Count<30)codexNotices.Enqueue(message);return; }
             if(IsVisible) { if(codexNotices.Count<30)codexNotices.Enqueue(message); }
             else if(tray!=null)tray.ShowBalloonTip(10000,title,message,Forms.ToolTipIcon.Info);
@@ -535,7 +539,7 @@ public partial class PetWindow : Window {
     void ShowSidebar() { prefs.SidebarEnabled=true;Save();if(sidebar!=null)sidebar.Expand(); }
     void CreateTray() {
         trayIcon=new System.Drawing.Icon(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"assets","silver-wolf.ico"),Forms.SystemInformation.SmallIconSize);
-        tray=new Forms.NotifyIcon { Icon=trayIcon, Text="银狼 LV.999 · v2.6.13 预览版 · 双击找回桌宠", Visible=true };
+        tray=new Forms.NotifyIcon { Icon=trayIcon, Text="银狼 LV.999 · v2.6.14 预览版 · 双击找回桌宠", Visible=true };
         var menu=new Forms.ContextMenuStrip();
         menu.Items.Add("显示 / 找回桌宠",null,delegate { Dispatcher.Invoke(new Action(Recover)); });
         menu.Items.Add("隐藏桌宠",null,delegate { Dispatcher.Invoke(new Action(HideManually)); });
@@ -573,7 +577,7 @@ public partial class PetWindow : Window {
         settings=new Window { Title="银狼 LV.999 · 设置", Width=410, Height=640, ResizeMode=ResizeMode.NoResize, WindowStartupLocation=WindowStartupLocation.CenterScreen, Background=new SolidColorBrush(Color.FromRgb(245,243,252)), Topmost=true };
         ThemeWindow(settings);
         var panel=new StackPanel { Margin=new Thickness(24) }; settings.Content=new ScrollViewer { Content=panel, VerticalScrollBarVisibility=ScrollBarVisibility.Auto };
-        panel.Children.Add(new TextBlock { Text="PLAYER SETTINGS  /  2.6.13 预览版", FontSize=20, FontWeight=FontWeights.Bold, Foreground=new SolidColorBrush(Color.FromRgb(76,54,136)) });
+        panel.Children.Add(new TextBlock { Text="PLAYER SETTINGS  /  2.6.14 预览版", FontSize=20, FontWeight=FontWeights.Bold, Foreground=new SolidColorBrush(Color.FromRgb(76,54,136)) });
         var packLabel=new TextBlock { Text="当前形象："+(pack.Spec.name??"自定义"), Margin=new Thickness(0,12,0,16) }; panel.Children.Add(packLabel);
         panel.Children.Add(new TextBlock { Text="桌宠大小（也可在角色上滚动鼠标滚轮）" });
         var slider=new Slider { Minimum=160, Maximum=600, Value=prefs.Size, Margin=new Thickness(0,8,0,16), TickFrequency=20, IsSnapToTickEnabled=true }; slider.ValueChanged+=delegate { ResizePet(slider.Value); }; panel.Children.Add(slider);
@@ -765,7 +769,7 @@ public static class Program {
         try {
             bool created;
             using(var mutex=new System.Threading.Mutex(true,test?"Local\\SilverWolfPet.Test":preview?"Local\\SilverWolfPet.Preview":"Local\\SilverWolfPet.Desktop",out created)) {
-                if(!created) { if(!autoStart)MessageBox.Show("已有桌宠在运行。若要升级，请先在旧版托盘菜单点击退出，再启动 v2.6.13 预览版。","银狼 LV.999"); return 0; }
+                if(!created) { if(!autoStart)MessageBox.Show("已有桌宠在运行。若要升级，请先在旧版托盘菜单点击退出，再启动 v2.6.14 预览版。","银狼 LV.999"); return 0; }
                 var app=new Application { ShutdownMode=ShutdownMode.OnMainWindowClose };
                 var window=new PetWindow(root,test,preview); app.MainWindow=window;
                 if(test) { window.SelfTest(root); window.Close(); return 0; }

@@ -151,7 +151,9 @@ public sealed class QuotaSidebar : IDisposable {
         double x0=clamp(preferred.X,area.Left,area.Right-size.Width),y0=clamp(preferred.Y,area.Top,area.Bottom-size.Height);
         var xs=new List<double>{x0,area.Left,area.Right-size.Width};var ys=new List<double>{y0,area.Top,area.Bottom-size.Height};
         foreach(var b in blocked){xs.Add(b.Left-size.Width-1);xs.Add(b.Right+1);ys.Add(b.Top-size.Height-1);ys.Add(b.Bottom+1);}
-        var candidates=from x in xs from y in ys let r=new Rect(x,y,size.Width,size.Height) where free(r) orderby Math.Abs(x-x0)*4+Math.Abs(y-y0) select r;
+        // Preserve the handle's vertical rhythm. When wings or a dialogue occupy the
+        // preferred slot, move farther left before considering an upward jump.
+        var candidates=from x in xs from y in ys let r=new Rect(x,y,size.Width,size.Height) where free(r) orderby Math.Abs(y-y0)*4+Math.Abs(x-x0) select r;
         return candidates.DefaultIfEmpty(Rect.Empty).First();
     }
     void Place() {
@@ -266,6 +268,8 @@ public sealed class QuotaSidebar : IDisposable {
         var moved=new Rect(located.Left,located.Top,200,180);
         var adjusted=FindSpace(area,size,ideal,new[]{character,balloon,moved},located);
         if(adjusted.IsEmpty||adjusted.IntersectsWith(moved))throw new Exception("sidebar did not avoid newly appeared bubble");
+        var wingBlocked=FindSpace(new Rect(0,0,1600,900),size,new Point(690,500),new[]{new Rect(620,430,450,310)},Rect.Empty);
+        if(wingBlocked.IsEmpty||Math.Abs(wingBlocked.Top-500)>1||wingBlocked.Right>608)throw new Exception("sidebar moved upward instead of left of wings");
         if(FindSpace(area,size,ideal,new[]{area},Rect.Empty)!=Rect.Empty)throw new Exception("sidebar overlaps when no free space");
         foreach(var a in new[]{new Rect(-1280,0,1280,720),new Rect(0,0,853,480)}) {
             var result=FindSpace(a,size,new Point(a.Right-334,a.Bottom-180),new[]{new Rect(a.Right-250,a.Bottom-260,250,260)},Rect.Empty);
