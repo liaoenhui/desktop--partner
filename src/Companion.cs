@@ -83,6 +83,7 @@ public partial class PetWindow {
         }
         double verticalTrim=bubblePanel.Padding.Top+bubblePanel.Padding.Bottom+bubblePanel.BorderThickness.Top+bubblePanel.BorderThickness.Bottom;
         double contentWidth=Math.Max(1,bubble.Width-bubblePanel.Padding.Left-bubblePanel.Padding.Right-bubblePanel.BorderThickness.Left-bubblePanel.BorderThickness.Right);
+        if(codexTasks!=null&&codexTasks.Multiple)linkLabel.MaxWidth=contentWidth;
         words.InvalidateMeasure();words.Measure(new Size(contentWidth,Double.PositiveInfinity));
         double contentHeight=words.DesiredSize.Height+(hasReplies?replies.Margin.Top+replies.Margin.Bottom:0);
         if(linkLabel.Visibility==Visibility.Visible) { linkLabel.Measure(new Size(contentWidth,Double.PositiveInfinity));contentHeight+=linkLabel.DesiredSize.Height; }
@@ -114,6 +115,7 @@ public partial class PetWindow {
     }
     double WorkBubbleMaximumWidth() {return Math.Min(250,Math.Max(118,Width-8));}
     void InitCompanionBubble() {
+        linkLabel.MouseLeftButtonUp+=delegate(object sender,System.Windows.Input.MouseButtonEventArgs e) {if(codexTasks!=null&&codexTasks.Active.Length>1){ShowCodexTaskMenu();e.Handled=true;}};
         words.FontFamily=new FontFamily("Microsoft YaHei");words.FontSize=12;words.TextAlignment=TextAlignment.Left;words.LineHeight=19;
         var content=new StackPanel();content.Children.Add(linkLabel);content.Children.Add(words);content.Children.Add(replies);bubblePanel.Child=content;
         bubble.RowDefinitions.Add(new RowDefinition {Height=GridLength.Auto});bubble.RowDefinitions.Add(new RowDefinition {Height=new GridLength(0)});

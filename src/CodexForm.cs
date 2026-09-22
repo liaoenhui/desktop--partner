@@ -10,6 +10,67 @@ using System.Windows.Media.Imaging;
 
 namespace SilverWolfPet {
 public partial class PetWindow {
+    CodexTaskSnapshot codexTasks;
+    string displayedTaskKey,displayedTaskState;
+    static string ShortTaskTitle(string title) {return title.Length>14?title.Substring(0,14)+"…":title;}
+    void ApplyCodexTasks(CodexTaskSnapshot snapshot) {
+        bool hadMultiple=codexTasks!=null&&codexTasks.Multiple;
+        codexTasks=snapshot;
+        if(sidebar!=null)sidebar.SetWorking(snapshot.Active.Any());
+        SetCodexForm(snapshot.Active.Any());
+        var display=snapshot.Display;
+        if(display!=null) {
+            bool changed=displayedTaskKey!=display.Key;
+            if(changed) {
+                codexStateSpoken.Clear();codexPendingWorkState=null;codexIntroQueuedState=null;
+                codexTimerBubble=false;codexWaitingBubble=false;codexTimerShownSecond=-1;
+                bubble.Visibility=Visibility.Collapsed;bubblePriority=0;replies.Children.Clear();BubbleSpace(0);
+                nextCodexThinkingLine=elapsed.Elapsed.TotalSeconds+14+random.NextDouble()*8;
+            }
+            codexTaskStart=elapsed.Elapsed.TotalSeconds-Math.Max(0,(DateTime.UtcNow-display.StartedUtc).TotalSeconds);
+            if(changed||displayedTaskState!=display.State) {
+                if(display.State=="idle")EnterCodexIdle(elapsed.Elapsed.TotalSeconds);
+                else {
+                    // A resolved request and a selected task change release the old
+                    // pose immediately; smoothing must never pin another task's state.
+                    if(codexWorkState=="waiting-input"){codexPendingWorkState=null;ApplyCodexWorkState(display.State,elapsed.Elapsed.TotalSeconds);}
+                    else SetCodexWorkState(display.State);
+                }
+            }
+            displayedTaskKey=display.Key;displayedTaskState=display.State;
+        } else {
+            displayedTaskKey=displayedTaskState=null;
+            if(codexFormWorking&&!codexExitActive)EnterCodexIdleIfNeeded();
+        }
+        if(hadMultiple!=snapshot.Multiple) {codexTimerBubble=false;codexTimerShownSecond=-1;}
+        UpdateTaskHeader();
+        if(bubble.Visibility==Visibility.Visible)LayoutBubble();
+        if(!String.IsNullOrEmpty(snapshot.Notice)&&snapshot.Active.Any()&&bubblePriority<5){codexTimerBubble=false;codexTimerResumeAt=elapsed.Elapsed.TotalSeconds+3;SayCodex(snapshot.Notice,3,4);}
+    }
+    void EnterCodexIdleIfNeeded(){if(codexWorkState!="idle")EnterCodexIdle(elapsed.Elapsed.TotalSeconds);}
+    void UpdateTaskHeader() {
+        if(!codexFormWorking||codexTasks==null)return;
+        if(codexTasks.Multiple&&codexTasks.Display!=null) {
+            linkLabel.Text=(codexTasks.Attention?"待处理 · ":"")+ShortTaskTitle(codexTasks.Display.Title)+" ▾";
+            if(!codexTimerBubble)linkLabel.Text+="\n"+codexTasks.Active.Length+" 个任务运行中";
+            linkLabel.ToolTip=codexTasks.Display.Title+"（点击切换任务）";
+            linkLabel.Visibility=Visibility.Visible;linkLabel.Cursor=System.Windows.Input.Cursors.Hand;
+            linkLabel.TextWrapping=TextWrapping.NoWrap;linkLabel.TextTrimming=TextTrimming.CharacterEllipsis;linkLabel.MaxWidth=WorkBubbleMaximumWidth()-22;
+            bubble.IsHitTestVisible=true;
+        } else {linkLabel.Visibility=Visibility.Collapsed;linkLabel.ToolTip=null;linkLabel.Cursor=null;}
+    }
+    void ShowCodexTaskMenu() {
+        if(codexTasks==null)return;
+        var menu=new ContextMenu();
+        foreach(var task in codexTasks.Active) {
+            string key=task.Key;int seconds=(int)Math.Max(0,(DateTime.UtcNow-task.StartedUtc).TotalSeconds);
+            string status=task.State=="waiting-input"?"等待处理":task.State=="executing"?"执行中":"思考中";
+            var item=new MenuItem {Header=task.Title+" · "+status+" · "+(seconds/60)+"分"+(seconds%60)+"秒",IsCheckable=true,IsChecked=key==codexTasks.MainKey};
+            item.Click+=delegate {if(codex!=null)codex.SelectTask(key);};menu.Items.Add(item);
+        }
+        menu.PlacementTarget=linkLabel.Visibility==Visibility.Visible?(UIElement)linkLabel:pet;
+        menuOpen=true;menu.Closed+=delegate{menuOpen=false;};menu.IsOpen=true;
+    }
     BitmapSource[] codexFrames;
     Dictionary<string,AnimationClip> codexWorkClips;
     readonly HashSet<string> codexStateSpoken=new HashSet<string>();
@@ -78,9 +139,19 @@ public partial class PetWindow {
             if(entering){codexFormWorking=true;codexActivationAnnounced=false;codexIntroComplete=false;codexIntroQueuedState="thinking";codexIntroRelease=0;codexFormStart=now;KeepAccessoriesOnScreen();Enter("idle");ScheduleIdle(now);}
             else {codexIntroComplete=true;codexIntroQueuedState=null;codexIntroRelease=0;}
         } else {
-            codexLastTaskEnd=elapsed.Elapsed.TotalSeconds;
+            double now=elapsed.Elapsed.TotalSeconds;
+            codexLastTaskEnd=now;
+            // Working=false is the authoritative end of the aggregate Codex task.
+            // Clear delayed reasoning/execution transitions so a late queued state
+            // cannot leave the pet thinking after every tracked task has ended.
+            codexPendingWorkState=null;codexIntroQueuedState=null;codexIntroRelease=0;
             if(codexTimerBubble){bubble.Visibility=Visibility.Collapsed;BubbleSpace(0);}
             codexTimerBubble=false;codexTimerShownSecond=-1;
+            // Only an explicit task_complete event may show the success pose.
+            // Working=false can also be a transient monitor/abort/cleanup signal,
+            // so use it only to release a stale active pose.
+            if(codexFormWorking&&(codexWorkState=="thinking"||codexWorkState=="executing"||codexWorkState=="waiting-input"))
+                EnterCodexIdle(now);
         }
     }
     void ExitCodexForm() {
@@ -151,7 +222,7 @@ public partial class PetWindow {
         if(!codexStateBubblePending||codexStateSpoken.Contains(codexWorkState))return;
         string line;double seconds;int priority;
         switch(codexWorkState) {
-            case "waiting-input":line="别发呆了，快给我个权限。";seconds=Double.PositiveInfinity;priority=6;break;
+            case "waiting-input":line=codexTasks!=null&&codexTasks.Display!=null&&codexTasks.Display.WaitingKind=="input"?"这一步等你决定，快给我个答复。":"别发呆了，快给我个权限。";seconds=Double.PositiveInfinity;priority=6;break;
             case "failed":line=ChooseLine("codex-failed",new[]{"啧，出错了。换条路线。","这步没通，我重新规划。"});seconds=7;priority=5;break;
             case "completed":line=ChooseLine("codex-completed",new[]{"通关。任务已经完成。","搞定，来验收结果。"});seconds=7;priority=5;break;
             default:UpdateCodexTimerBubble(elapsed.Elapsed.TotalSeconds);return;
@@ -163,7 +234,8 @@ public partial class PetWindow {
         }
     }
     void AddCodexApprovalReplies() {
-        Reply("前往授权",delegate {
+        bool input=codexTasks!=null&&codexTasks.Display!=null&&codexTasks.Display.WaitingKind=="input";
+        Reply(input?"前往回答":"前往授权",delegate {
             if(TryActivateCodexWindow()) {codexWaitingBubble=false;bubblePriority=0;return;}
             SayCodex("没找到 Codex 窗口，请先打开 Codex。",Double.PositiveInfinity,6);
             codexWaitingBubble=true;AddCodexApprovalReplies();
@@ -178,7 +250,8 @@ public partial class PetWindow {
         if(!codexFormWorking||!codexTaskRunning||codexWorkState!="executing"||!codexIntroComplete||now<codexIntroRelease||now-codexFormStart<5.8||now<codexTimerResumeAt)return;
         int total=(int)Math.Max(0,Math.Floor(now-codexTaskStart));if(codexTimerBubble&&total==codexTimerShownSecond)return;
         string message="任务运行计时中，\n当前用时"+(total/60).ToString("00")+"分"+(total%60).ToString("00")+"秒……\n别急。马上搞定咯。";
-        if(!codexTimerBubble) {SayCodex(message,Double.PositiveInfinity,4);codexTimerBubble=words.Text==message;}
+        if(codexTasks!=null&&codexTasks.Multiple)message="当前用时"+(total/60).ToString("00")+"分"+(total%60).ToString("00")+"秒\n另有 "+Math.Max(0,codexTasks.Active.Length-1)+" 个任务运行中";
+        if(!codexTimerBubble) {SayCodex(message,Double.PositiveInfinity,4);codexTimerBubble=words.Text==message;UpdateTaskHeader();LayoutBubble();}
         // The fixed two-digit format keeps the bubble height stable, so the
         // once-per-second update only repaints text instead of remeasuring the window.
         else {words.Text=message;bubbleUntil=Double.PositiveInfinity;}
@@ -255,7 +328,8 @@ public partial class PetWindow {
             // A result pose is always bounded. If a stale/intermediate result ever
             // arrives while another task is still running, resume the work pose
             // instead of holding the result until a later log event replaces it.
-            if(codexTaskRunning)ApplyCodexWorkState("thinking",now);else EnterCodexIdle(now);
+            if(codexTasks!=null&&codexTasks.Display!=null&&!codexTasks.Display.Running)return CodexWorkFrame(now);
+            if(codexTaskRunning)ApplyCodexWorkState(codexTasks!=null&&codexTasks.Display!=null?codexTasks.Display.State:"thinking",now);else EnterCodexIdle(now);
         }
         if(codexStateBubblePending&&t>=4.8)SayCodexWorkState();
         MaybeSayCodexThinking(now);
@@ -323,6 +397,10 @@ public partial class PetWindow {
         CodexFormFrame(operationStarted+3.6,pack.Base);if(codexWorkState!="thinking"||codexPendingWorkState!=null)throw new Exception("Delayed reasoning pose did not resume");
         double strayCompletedAt=operationStarted+4;ApplyCodexWorkState("completed",strayCompletedAt);
         if(!codexWorkClips["thinking"].Frames.Contains(CodexFormFrame(strayCompletedAt+8.1,pack.Base))||codexWorkState!="thinking")throw new Exception("Intermediate completed pose remained while work was active");
+        SetCodexWorkStateAt("executing",strayCompletedAt+8.2);SetCodexWorkStateAt("thinking",strayCompletedAt+8.3);SetCodexForm(false);
+        if(codexTaskRunning||codexPendingWorkState!=null||codexWorkState!="idle")throw new Exception("Task end did not clear a queued thinking transition");
+        if(CodexFormFrame(strayCompletedAt+16.4,pack.Base)!=codexFrames[2]||codexWorkState!="idle")throw new Exception("Task end did not remain in work idle");
+        SetCodexForm(true);CodexFormFrame(strayCompletedAt+22,pack.Base);
         double failedAt=strayCompletedAt+9;ApplyCodexWorkState("failed",failedAt);SetCodexForm(false);
         if(!codexWorkClips["failed"].Frames.Contains(CodexFormFrame(failedAt+7.9,pack.Base)))throw new Exception("Failed pose ended too early");
         if(CodexFormFrame(failedAt+8.1,pack.Base)!=codexFrames[2]||codexWorkState!="idle")throw new Exception("Failed pose did not return to work idle");
@@ -364,6 +442,26 @@ public partial class PetWindow {
         var output=new PngBitmapEncoder();output.Frames.Add(BitmapFrame.Create(shot));using(var f=File.Create(Path.Combine(root,"qa","cutin.png")))output.Save(f);
         CompleteCodexExit();SetCodexForm(false);Say("日常气泡样式检查",3);
         if(bubbleThemeWork!=false||bubblePanel.Effect!=null||bubbleTail.Visibility!=Visibility.Collapsed||!(bubblePanel.BorderBrush is SolidColorBrush))throw new Exception("Daily bubble theme was not restored");
+        TestMultipleTaskBubble(root);
+    }
+    void TestMultipleTaskBubble(string root) {
+        double savedSize=prefs.Size;ResizePet(160);
+        var now=DateTime.UtcNow;var a=new CodexTaskView {Key="a",Title="修复视频黑屏与播放",State="executing",StartedUtc=now.AddMinutes(-6),Running=true};
+        var b=new CodexTaskView {Key="b",Title="整理项目文档",State="thinking",StartedUtc=now.AddMinutes(-2),Running=true};
+        ApplyCodexTasks(new CodexTaskSnapshot {Active=new[]{a,b},Display=a,MainKey="a",Multiple=true});
+        codexIntroComplete=true;codexFormStart=elapsed.Elapsed.TotalSeconds-10;codexIntroQueuedState=null;codexIntroRelease=0;
+        bubblePriority=0;ApplyCodexWorkState("executing",elapsed.Elapsed.TotalSeconds);
+        if(!words.Text.Contains("06分")||!words.Text.Contains("另有 1")||linkLabel.Visibility!=Visibility.Visible||!bubble.IsHitTestVisible)throw new Exception("multi task attribution/count missing");
+        SetFrame(CodexWorkFrame(elapsed.Elapsed.TotalSeconds));previous.Opacity=0;pet.Opacity=1;
+        Scene.Measure(new Size(Width,Height));Scene.Arrange(new Rect(0,0,Width,Height));Scene.UpdateLayout();
+        if(pet.Margin.Top<bubble.ActualHeight+11)throw new Exception("multi-task bubble overlaps the pet at minimum size");
+        RenderDialogCheck(root,"multiple-task-dialog.png");
+        b.State="executing";ApplyCodexTasks(new CodexTaskSnapshot {Active=new[]{a,b},Display=b,MainKey="b",Multiple=true});
+        UpdateCodexTimerBubble(elapsed.Elapsed.TotalSeconds);
+        if(!words.Text.Contains("02分")||!linkLabel.Text.Contains(b.Title))throw new Exception("task switch retained the previous elapsed time/title");
+        ApplyCodexTasks(new CodexTaskSnapshot {Active=new[]{b},Display=b,MainKey="b"});UpdateCodexTimerBubble(elapsed.Elapsed.TotalSeconds);
+        if(linkLabel.Visibility!=Visibility.Collapsed||words.Text.Contains("另有")||!words.Text.Contains("别急"))throw new Exception("single task did not restore the original bubble");
+        ApplyCodexTasks(new CodexTaskSnapshot());CompleteCodexExit();codexTasks=null;ResizePet(savedSize);
     }
 }
 }

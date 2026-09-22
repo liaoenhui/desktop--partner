@@ -318,7 +318,7 @@ public partial class PetWindow : Window {
         string warning=null;
         try { pack=LoadedPack.Load(String.IsNullOrEmpty(prefs.PackPath)?defaultPack:prefs.PackPath); }
         catch(Exception ex) { pack=LoadedPack.Load(defaultPack); prefs.PackPath=""; warning="自定义素材无法载入，已恢复默认形象。"; Debug.WriteLine(ex); }
-        Title="银狼 LV.999 桌宠 · 2.6.22 预览版"; WindowStyle=WindowStyle.None; ResizeMode=ResizeMode.NoResize;
+        Title="银狼 LV.999 桌宠 · 2.6.23 多任务预览版"; WindowStyle=WindowStyle.None; ResizeMode=ResizeMode.NoResize;
         Icon=BitmapFrame.Create(new Uri(System.IO.Path.Combine(root,"assets","silver-wolf.ico")));
         AllowsTransparency=true; Background=Brushes.Transparent; ShowInTaskbar=false;ShowActivated=false; Topmost=prefs.Topmost;
         if(preview) { ShowInTaskbar=true; Title="银狼 LV.999 · 动作测试"; }
@@ -360,8 +360,7 @@ public partial class PetWindow : Window {
         codex=new CodexMonitor(System.IO.Path.GetDirectoryName(settingsPath));
         codex.Quotas=delegate(List<QuotaReading> value) { Dispatcher.BeginInvoke(new Action(delegate {if(sidebar!=null)sidebar.Update(value);})); };
         codex.Failure=delegate(string value) { Dispatcher.BeginInvoke(new Action(delegate {if(sidebar!=null)sidebar.Fail(value);})); };
-        codex.Working=delegate(bool value) { Dispatcher.BeginInvoke(new Action(delegate {if(sidebar!=null)sidebar.SetWorking(value);SetCodexForm(value);})); };
-        codex.TaskState=delegate(string value) { Dispatcher.BeginInvoke(new Action(delegate {SetCodexWorkState(value);})); };
+        codex.Tasks=delegate(CodexTaskSnapshot value) { Dispatcher.BeginInvoke(new Action(delegate {ApplyCodexTasks(value);})); };
         codex.UsageEnabled=prefs.CodexUsage;codex.TasksEnabled=prefs.CodexTasks;
         codex.Status=delegate(string status) { Dispatcher.BeginInvoke(new Action(delegate { codexStatus=status;if(codexStatusText!=null)codexStatusText.Text=status; })); };
         codex.Notice=delegate(string title,string message) { Dispatcher.BeginInvoke(new Action(delegate {
@@ -464,6 +463,7 @@ public partial class PetWindow : Window {
         ApplyBubbleTheme();
         linkLabel.Text="银狼  /  LV.999";
         linkLabel.Visibility=welcome?Visibility.Visible:Visibility.Collapsed;
+        UpdateTaskHeader();
         BubbleSpace(0);
         words.Text=(message??"").Substring(0,Math.Min(200,(message??"").Length)); bubble.Visibility=Visibility.Visible; bubbleUntil=elapsed.Elapsed.TotalSeconds+seconds; bubblePriority=priority;
         LayoutBubble();
@@ -626,6 +626,7 @@ public partial class PetWindow : Window {
         MenuItem(menu,"✦  " + (pack.Spec.name??"桌宠"),delegate { React(false); });
         MenuItem(menu,"互动一下",delegate { React(false); });
         if(codexFormWorking)MenuItem(menu,"退出无敌玩家状态",ExitCodexForm);
+        if(codexTasks!=null&&codexTasks.Active.Length>1)MenuItem(menu,"切换关注的任务…",ShowCodexTaskMenu);
         MenuItem(menu,"预览无敌玩家变身",delegate { if(codexFrames!=null){codexFormWorking=true;codexActivationAnnounced=false;codexFormStart=elapsed.Elapsed.TotalSeconds;if(!codexTaskRunning)codexLastTaskEnd=elapsed.Elapsed.TotalSeconds-590;Enter("idle");} });
         MenuItem(menu,prefs.SidebarEnabled?"隐藏额度终端":"显示额度终端",ToggleSidebar);
         var actions=new System.Windows.Controls.MenuItem { Header="动作预览" };
@@ -713,6 +714,7 @@ public partial class PetWindow : Window {
         BubblePositionTests();checks.Add("PASS 500 bubble resize/hide cycles with native pixel rounding at 100-200% DPI");
         BubbleLayoutTests(root);checks.Add("PASS reply wrapping and plain/reply bubble separation at sizes 160, 300 and 600; no touch diagnostic label");
         CodexMonitor.SelfTest(root);checks.Add("PASS Codex thresholds, same-window quota deduplication, completion debounce, long quiet task state, historical suppression and mute");
+        checks.Add("PASS independent concurrent task state/timers, stable main selection, manual switch, result handoff, approval confirmation and request resolution");
         var reminderCases=new[]{new DailyReminder { id="offwork",time="18:00" },new DailyReminder { id="midnight",time="00:00" }};
         var shown=new Dictionary<string,string>();var day=new DateTime(2026,9,10);
         if(ReminderSchedule.Due(reminderCases,day.AddHours(18).AddSeconds(-1),shown)!=null)throw new Exception("reminder fired early");
@@ -840,7 +842,7 @@ public static class Program {
         try {
             bool created;
             using(var mutex=new System.Threading.Mutex(true,test?"Local\\SilverWolfPet.Test":preview?"Local\\SilverWolfPet.Preview":"Local\\SilverWolfPet.Desktop",out created)) {
-                if(!created) { if(!autoStart)MessageBox.Show("已有桌宠在运行。若要升级，请先在旧版托盘菜单点击退出，再启动 v2.6.22 预览版。","银狼 LV.999"); return 0; }
+                if(!created) { if(!autoStart)MessageBox.Show("已有桌宠在运行。若要升级，请先在旧版托盘菜单点击退出，再启动 v2.6.23 多任务预览版。","银狼 LV.999"); return 0; }
                 var app=new Application { ShutdownMode=ShutdownMode.OnMainWindowClose };
                 var window=new PetWindow(root,test,preview); app.MainWindow=window;
                 if(test) { window.SelfTest(root); window.Close(); return 0; }

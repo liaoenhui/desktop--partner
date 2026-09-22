@@ -123,7 +123,7 @@ public sealed class QuotaSidebar : IDisposable {
     public void Update(List<QuotaReading> value) {if(disposed)return;readings=value;updated=DateTime.UtcNow;failure="";Draw();Place();}
     public void Fail(string message) {if(disposed)return;failure=message;Draw();Place();}
     public void SetWorking(bool value) {working=value;if(!value)AnimateMouth();}
-    QuotaReading Primary() {return readings.Where(x=>x.Minutes==300&&x.ResetUtc>DateTime.UtcNow).OrderBy(x=>x.Bucket=="codex"?0:1).ThenBy(x=>x.Remaining).FirstOrDefault();}
+    QuotaReading Primary() {return readings.Where(x=>!x.IsCredits&&(x.Minutes==300||x.Minutes==10080)&&x.ResetUtc>DateTime.UtcNow).OrderBy(x=>x.Minutes==300?0:1).ThenBy(x=>x.Bucket=="codex"?0:1).ThenBy(x=>x.Remaining).FirstOrDefault();}
     string PercentText() {return String.Concat(percent.Inlines.OfType<System.Windows.Documents.Run>().Select(x=>x.Text));}
     public void Expand() {if(disposed||!visible())return;Draw();Place();if(!canShowHandle)return;if(!handle.IsVisible)handle.Show();if(canPlace)popup.Show();leaveAt=DateTime.UtcNow;}
     void Tick() {
@@ -290,6 +290,7 @@ public sealed class QuotaSidebar : IDisposable {
             Render(view.popup,root,"sidebar.png");Render(view.handle,root,"sidebar-handle.png"); var last=(FrameworkElement)view.rows.Children[view.rows.Children.Count-1];if(last.TranslatePoint(new Point(0,last.ActualHeight),view.rows).Y>view.rowsViewport.Height+1)throw new Exception("last quota row clipped");
             view.Fail("网络不可用");if(!view.status.Text.Contains("上次数据")||view.PercentText()!="68%")throw new Exception("sidebar stale data");
             view.Update(new List<QuotaReading>());if(view.PercentText()!="—")throw new Exception("sidebar unknown shown as zero");
+            view.Update(new List<QuotaReading>{new QuotaReading {Bucket="codex",Minutes=10080,Remaining=42,ResetUtc=DateTime.UtcNow.AddDays(2)}});if(view.PercentText()!="42%")throw new Exception("sidebar weekly fallback");
             view.Update(new List<QuotaReading>{new QuotaReading {Bucket="codex",Minutes=300,Remaining=10,ResetUtc=DateTime.UtcNow.AddSeconds(-1)}});if(view.PercentText()!="—")throw new Exception("sidebar expired data");
         }
     }
