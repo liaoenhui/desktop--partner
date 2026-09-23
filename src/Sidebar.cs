@@ -73,11 +73,14 @@ public sealed class QuotaSidebar : IDisposable {
     }
     [DllImport("user32.dll",EntryPoint="GetWindowLongW")]static extern int GetWindowLong(IntPtr h,int n);
     [DllImport("user32.dll",EntryPoint="SetWindowLongW")]static extern int SetWindowLong(IntPtr h,int n,int v);
-    public QuotaSidebar(Func<bool> show,Func<bool> queryEnabled,double position,string screen,Action<double,string> persist,bool start=true,Func<Rect[]> avoid=null,bool inspect=false,Func<Rect> follow=null,bool dock=false,Action<bool> persistDock=null,Action onClick=null) {
+    public QuotaSidebar(Func<bool> show,Func<bool> queryEnabled,double position,string screen,Action<double,string> persist,bool start=true,Func<Rect[]> avoid=null,bool inspect=false,Func<Rect> follow=null,bool dock=false,Action<bool> persistDock=null,Action onClick=null,Window owner=null) {
         companion=follow;docked=dock||follow==null;saveDock=persistDock??(v=>{});greet=onClick??(()=>{});
         obstacles=avoid??(()=>new Rect[0]);
         visible=show;enabled=queryEnabled;save=persist;fraction=Double.IsNaN(position)||Double.IsInfinity(position)?.45:Math.Max(0,Math.Min(1,position));device=screen;
         handle=Surface(40,108,"银狼 · 额度入口",inspect);popup=Surface(306,230,"银狼 · Codex 额度",inspect);
+        // Keep both floating surfaces in the pet's z-order group. Otherwise a
+        // maximized browser can cover the bean while the pet itself stays visible.
+        if(owner!=null){handle.Owner=owner;popup.Owner=owner;}
         var scene=new Grid {Background=Brushes.Transparent};handle.Content=scene;
         // Mirrored shoulders and a straight spine: no extra lobe under the bean.
         shell.Fill=Glass();shell.Stroke=new SolidColorBrush(Color.FromArgb(185,207,225,255));shell.StrokeThickness=1;scene.Children.Add(shell);
@@ -172,7 +175,7 @@ public sealed class QuotaSidebar : IDisposable {
         if(moving)preferred=new Point(cursor.X/dx-handle.Width/2,cursor.Y/dy-handle.Height/2);
         // The follower occupies the sprite's transparent lower-left margin. Full window
         // avoidance is for the popup and docked entry, not this intentional attachment.
-        var handlePlace=FindSpace(docked&&!moving?new Rect(work.Right-handle.Width,work.Top,handle.Width,work.Height):work,new Size(handle.Width,handle.Height),preferred,docked&&!moving?reserved:new Rect[0],Rect.Empty);
+        var handlePlace=FindHandleSpace(work,new Size(handle.Width,handle.Height),preferred,docked&&!moving,reserved);
         canShowHandle=!handlePlace.IsEmpty;
         if(!handlePlace.IsEmpty)MoveWindow(handle,handlePlace.Left,handlePlace.Top,dx,dy);
         var here=new Point(handle.Left,handle.Top);
@@ -183,6 +186,16 @@ public sealed class QuotaSidebar : IDisposable {
         if(canPlace){MoveWindow(popup,chosen.Left,chosen.Top,dx,dy);previousPlacement=new Rect(popup.Left,popup.Top,popup.Width,popup.Height);}
         else {popup.Hide();}
         Outline();
+    }
+    static Rect FindHandleSpace(Rect work,Size size,Point preferred,bool edge,Rect[] obstacles) {
+        var avoid=edge?obstacles:new Rect[0];
+        var strip=edge?new Rect(work.Right-size.Width,work.Top,size.Width,work.Height):work;
+        var place=FindSpace(strip,size,preferred,avoid,Rect.Empty);
+        if(place.IsEmpty&&edge)place=FindSpace(work,size,preferred,avoid,Rect.Empty);
+        // The entry is the only way to open the quota panel. Keep it reachable
+        // even when a bubble or light wing covers every candidate position.
+        if(place.IsEmpty)place=FindSpace(work,size,preferred,new Rect[0],Rect.Empty);
+        return place;
     }
     static void MoveWindow(Window window,double x,double y,double dx,double dy) {
         x=Math.Round(x*dx)/dx;y=Math.Round(y*dy)/dy;
@@ -245,6 +258,11 @@ public sealed class QuotaSidebar : IDisposable {
     public void Dispose() {if(disposed)return;disposed=true;timer.Stop();handle.Close();popup.Close();}
     public static void Tests(string root) {
         var petBounds=new Rect(700,200,180,260);
+        var petWindow=new Window();
+        using(var owned=new QuotaSidebar(()=>true,()=>true,.45,null,(a,b)=>{},false,null,false,()=>petBounds,false,null,null,petWindow)) {
+            if(owned.handle.Owner!=petWindow||owned.popup.Owner!=petWindow)throw new Exception("bean and panel lost pet window ownership");
+        }
+        petWindow.Close();
         using(var follower=new QuotaSidebar(()=>true,()=>true,.45,null,(a,b)=>{},false,()=>new[]{petBounds},false,()=>petBounds)) {
             follower.Update(new List<QuotaReading>{new QuotaReading {Bucket="codex",Minutes=300,Remaining=68,ResetUtc=DateTime.UtcNow.AddHours(1)}});
             if(follower.shell.Visibility!=Visibility.Collapsed||follower.PercentText()!="68%")throw new Exception("borderless follower label");
@@ -278,6 +296,11 @@ public sealed class QuotaSidebar : IDisposable {
         var wingBlocked=FindSpace(new Rect(0,0,1600,900),size,new Point(690,500),new[]{new Rect(620,430,450,310)},Rect.Empty);
         if(wingBlocked.IsEmpty||Math.Abs(wingBlocked.Top-500)>1||wingBlocked.Right>608)throw new Exception("sidebar moved upward instead of left of wings");
         if(FindSpace(area,size,ideal,new[]{area},Rect.Empty)!=Rect.Empty)throw new Exception("sidebar overlaps when no free space");
+        var edgeArea=new Rect(0,0,1280,720);var edgeSize=new Size(40,108);
+        var edgePlace=FindHandleSpace(edgeArea,edgeSize,new Point(1240,500),true,new[]{new Rect(1210,0,70,720)});
+        if(edgePlace.IsEmpty||!edgeArea.Contains(edgePlace))throw new Exception("edge bean disappeared when its strip was blocked");
+        var crowdedPlace=FindHandleSpace(edgeArea,edgeSize,new Point(1240,500),true,new[]{edgeArea});
+        if(crowdedPlace.IsEmpty||!edgeArea.Contains(crowdedPlace))throw new Exception("bean disappeared when all safe slots were blocked");
         foreach(var a in new[]{new Rect(-1280,0,1280,720),new Rect(0,0,853,480)}) {
             var result=FindSpace(a,size,new Point(a.Right-334,a.Bottom-180),new[]{new Rect(a.Right-250,a.Bottom-260,250,260)},Rect.Empty);
             if(result.IsEmpty||!a.Contains(result))throw new Exception("sidebar screen edge placement");

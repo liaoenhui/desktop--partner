@@ -35,6 +35,7 @@ public partial class PetWindow {
     [StructLayout(LayoutKind.Sequential)] struct QuietRect { public int Left,Top,Right,Bottom; }
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd,out QuietRect rect);
+    [DllImport("user32.dll",SetLastError=true)] static extern bool SetWindowPos(IntPtr hwnd,IntPtr after,int x,int y,int width,int height,uint flags);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd,out uint process);
     [DllImport("user32.dll",SetLastError=true)] static extern bool RegisterHotKey(IntPtr hwnd,int id,uint modifiers,uint key);
     [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr hwnd,int id);
@@ -43,6 +44,7 @@ public partial class PetWindow {
     const int ShowHotkey=0x5101,PassHotkey=0x5102;
     bool gameDetected,autoHidden,manuallyHidden,quietOverride;
     double nextQuietPoll;
+    double nextOverlayRaise;
     string hotkeyStatus="快捷键尚未初始化";
     bool QuietActive { get { return prefs.AutoQuiet&&gameDetected&&!quietOverride; } }
     static bool BrowserExecutable(string file) { return new[]{"chrome.exe","msedge.exe","firefox.exe","brave.exe","opera.exe","iexplore.exe","360chrome.exe","360se.exe","qqbrowser.exe","sogouexplorer.exe"}.Contains(file.ToLowerInvariant()); }
@@ -92,6 +94,16 @@ public partial class PetWindow {
     void QuietTick(double now) {
         if(testing||now<nextQuietPoll)return;nextQuietPoll=now+.5;
         ApplyGamePresence(GameNow());
+        // A browser entering full-screen can put its own topmost surface above
+        // our already-visible layered window. Restore this group's z-order
+        // without activating the pet or stealing keyboard focus.
+        if(now>=nextOverlayRaise) {
+            nextOverlayRaise=now+3;
+            if(prefs.Topmost&&IsVisible&&!QuietActive&&!manuallyHidden) {
+                var hwnd=new WindowInteropHelper(this).Handle;
+                if(hwnd!=IntPtr.Zero)SetWindowPos(hwnd,IntPtr.Zero,0,0,0,0,0x0013); // HWND_TOP, NOMOVE | NOSIZE | NOACTIVATE
+            }
+        }
     }
     void ApplyGamePresence(bool running) {
         gameDetected=running;if(!gameDetected)quietOverride=false;

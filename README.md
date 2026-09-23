@@ -1,3 +1,11 @@
+## 2.6.24 浏览器页面遮挡与骇客豆消失修复
+
+[一键下载最新版 2.6.24 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.24-preview-Windows-x64.zip)
+
+解压后运行 `SilverWolfPet.exe`，无需安装。更新前先从托盘退出旧桌宠；原有用户设置会保留。压缩包校验值见 [SHA256.txt](downloads/SHA256.txt)。
+
+骇客豆入口及额度面板现在跟随桌宠的窗口层级；浏览器进入全屏后，桌宠每隔几秒恢复一次置顶顺序，不抢输入焦点。侧边栏边缘被角色或气泡占满时，骇客豆会改找屏幕内可用位置，避免直接消失。
+
 ## 2.6.23 多任务关注与授权提醒修正
 
 [一键下载最新版 2.6.23 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.23-preview-Windows-x64.zip)
@@ -82,7 +90,7 @@ Codex 任务现在会在无敌玩家形态中区分思考、执行、等待用�
 
 ## 下载即用（Windows 10/11 x64）
 
-[下载最新版 2.6.23 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.23-preview-Windows-x64.zip)
+[下载最新版 2.6.24 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.24-preview-Windows-x64.zip)
 
 无需编译或安装依赖。下载后完整解压，双击 SilverWolfPet.exe 即可运行。已有旧版时先从托盘退出；保留同目录 assets 文件夹。当前为变身功能试用版。
 
