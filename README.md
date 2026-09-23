@@ -1,6 +1,12 @@
+## 2.6.25 修复 2.6.24 启动报错
+
+[一键下载最新版 2.6.25 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.25-preview-Windows-x64.zip)
+
+修复骇客豆窗口在银狼主窗口显示前设置 Owner 导致的启动失败。现在会等主窗口真正显示后再建立窗口层级，并补充启动前状态的回归测试。2.6.24 无法启动，请改用此版本。解压后运行 `SilverWolfPet.exe`；原有设置会保留。
+
 ## 2.6.24 浏览器页面遮挡与骇客豆消失修复
 
-[一键下载最新版 2.6.24 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.24-preview-Windows-x64.zip)
+[下载 2.6.24 Windows x64 便携包（存在启动错误）](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.24-preview-Windows-x64.zip)
 
 解压后运行 `SilverWolfPet.exe`，无需安装。更新前先从托盘退出旧桌宠；原有用户设置会保留。压缩包校验值见 [SHA256.txt](downloads/SHA256.txt)。
 
@@ -90,7 +96,7 @@ Codex 任务现在会在无敌玩家形态中区分思考、执行、等待用�
 
 ## 下载即用（Windows 10/11 x64）
 
-[下载最新版 2.6.24 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.24-preview-Windows-x64.zip)
+[下载最新版 2.6.25 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.25-preview-Windows-x64.zip)
 
 无需编译或安装依赖。下载后完整解压，双击 SilverWolfPet.exe 即可运行。已有旧版时先从托盘退出；保留同目录 assets 文件夹。当前为变身功能试用版。
 

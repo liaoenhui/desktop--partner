@@ -16,6 +16,9 @@ using Forms=System.Windows.Forms;
 namespace SilverWolfPet {
 public sealed class QuotaSidebar : IDisposable {
     readonly Window handle,popup;
+    readonly Window ownerWindow;
+    EventHandler ownerRendered;
+    bool ownerReady;
     readonly DispatcherTimer timer=new DispatcherTimer();
     readonly TextBlock percent=new TextBlock {FontSize=11,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,HorizontalAlignment=HorizontalAlignment.Center};
     readonly Border percentBadge;
@@ -78,9 +81,7 @@ public sealed class QuotaSidebar : IDisposable {
         obstacles=avoid??(()=>new Rect[0]);
         visible=show;enabled=queryEnabled;save=persist;fraction=Double.IsNaN(position)||Double.IsInfinity(position)?.45:Math.Max(0,Math.Min(1,position));device=screen;
         handle=Surface(40,108,"银狼 · 额度入口",inspect);popup=Surface(306,230,"银狼 · Codex 额度",inspect);
-        // Keep both floating surfaces in the pet's z-order group. Otherwise a
-        // maximized browser can cover the bean while the pet itself stays visible.
-        if(owner!=null){handle.Owner=owner;popup.Owner=owner;}
+        ownerWindow=owner;
         var scene=new Grid {Background=Brushes.Transparent};handle.Content=scene;
         // Mirrored shoulders and a straight spine: no extra lobe under the bean.
         shell.Fill=Glass();shell.Stroke=new SolidColorBrush(Color.FromArgb(185,207,225,255));shell.StrokeThickness=1;scene.Children.Add(shell);
@@ -121,14 +122,23 @@ public sealed class QuotaSidebar : IDisposable {
         handle.LostMouseCapture+=delegate {dragStart=null;Place();};
         System.Windows.Automation.AutomationProperties.SetName(handle,"额度入口：悬停查看，拖动调整位置");
         timer.Interval=TimeSpan.FromMilliseconds(100);timer.Tick+=delegate {Tick();};
-        Draw();if(start)timer.Start();
+        Draw();
+        if(owner==null){ownerReady=true;if(start)timer.Start();}
+        else if(owner.IsVisible){BindOwner();if(start)timer.Start();}
+        else {
+            // WPF rejects Owner until the owner window has actually been shown.
+            // Keep the entry hidden until then, so it can be safely attached.
+            ownerRendered=delegate {owner.ContentRendered-=ownerRendered;ownerRendered=null;if(disposed)return;BindOwner();if(start)timer.Start();};
+            owner.ContentRendered+=ownerRendered;
+        }
     }
+    void BindOwner() {handle.Owner=ownerWindow;popup.Owner=ownerWindow;ownerReady=true;}
     public void Update(List<QuotaReading> value) {if(disposed)return;readings=value;updated=DateTime.UtcNow;failure="";Draw();Place();}
     public void Fail(string message) {if(disposed)return;failure=message;Draw();Place();}
     public void SetWorking(bool value) {working=value;if(!value)AnimateMouth();}
     QuotaReading Primary() {return readings.Where(x=>!x.IsCredits&&(x.Minutes==300||x.Minutes==10080)&&x.ResetUtc>DateTime.UtcNow).OrderBy(x=>x.Minutes==300?0:1).ThenBy(x=>x.Bucket=="codex"?0:1).ThenBy(x=>x.Remaining).FirstOrDefault();}
     string PercentText() {return String.Concat(percent.Inlines.OfType<System.Windows.Documents.Run>().Select(x=>x.Text));}
-    public void Expand() {if(disposed||!visible())return;Draw();Place();if(!canShowHandle)return;if(!handle.IsVisible)handle.Show();if(canPlace)popup.Show();leaveAt=DateTime.UtcNow;}
+    public void Expand() {if(disposed||!ownerReady||!visible())return;Draw();Place();if(!canShowHandle)return;if(!handle.IsVisible)handle.Show();if(canPlace)popup.Show();leaveAt=DateTime.UtcNow;}
     void Tick() {
         if(disposed)return;
         AnimateMouth();
@@ -255,11 +265,14 @@ public sealed class QuotaSidebar : IDisposable {
         status.Text=!enabled()?"在桌宠设置中开启额度查询":failure.Length>0?(updated==DateTime.MinValue?"连接失败":"更新失败 · 上次数据")+"\n"+failure:updated==DateTime.MinValue?"等待连接本机 Codex…":values.Count==0?"接口未提供有效额度":stale?"上次数据 · "+updated.ToLocalTime().ToString("HH:mm:ss"):"● 已更新 "+updated.ToLocalTime().ToString("HH:mm:ss");
         double width=258;rows.InvalidateMeasure();rows.Measure(new Size(width,Double.PositiveInfinity));rowsViewport.Height=Math.Min(330,Math.Ceiling(rows.DesiredSize.Height));status.InvalidateMeasure();status.Measure(new Size(width,Double.PositiveInfinity));popup.Height=Math.Max(130,Math.Ceiling(30+37+rowsViewport.Height+status.DesiredSize.Height));Outline();
     }
-    public void Dispose() {if(disposed)return;disposed=true;timer.Stop();handle.Close();popup.Close();}
+    public void Dispose() {if(disposed)return;disposed=true;if(ownerWindow!=null&&ownerRendered!=null)ownerWindow.ContentRendered-=ownerRendered;timer.Stop();handle.Close();popup.Close();}
     public static void Tests(string root) {
         var petBounds=new Rect(700,200,180,260);
         var petWindow=new Window();
         using(var owned=new QuotaSidebar(()=>true,()=>true,.45,null,(a,b)=>{},false,null,false,()=>petBounds,false,null,null,petWindow)) {
+            if(owned.ownerReady||owned.handle.Owner!=null||owned.popup.Owner!=null)throw new Exception("bean owner was bound before the pet appeared");
+            petWindow.Show();
+            Dispatcher.CurrentDispatcher.Invoke(new Action(()=>{}),DispatcherPriority.ApplicationIdle);
             if(owned.handle.Owner!=petWindow||owned.popup.Owner!=petWindow)throw new Exception("bean and panel lost pet window ownership");
         }
         petWindow.Close();
