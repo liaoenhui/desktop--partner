@@ -1,6 +1,16 @@
+## 2.6.26 霓虹额度面板与骇客豆颜色稳定性
+
+[一键下载最新版 2.6.26 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.26-preview-Windows-x64.zip)
+
+采用已确认的冰青、电蓝、霓虹紫渐变面板，搭配清晰标题、折角描边、发光进度条及扫描线纹理。外围 12 个像素粒子仅在面板展开时轻微闪烁，收起后停止；复用现有计时器，无额外进程或图片素材。粒子留白纳入屏幕边界与气泡避让范围。
+
+查询失败、超过 3 分钟未更新不再降低骇客豆和百分比的透明度；暂时无有效数据时保留最后一次有效颜色，百分比仍显示“—”，面板提示实际数据状态。有效额度更新后仍按原来的黄、蓝、粉档位变色；无 5 小时额度时使用每周额度。
+
+解压后运行 `SilverWolfPet.exe`。更新前先从托盘退出旧版，原有设置会保留。增加 `--startup-check`，检查真实主窗口首次显示、骇客豆可见性与窗口归属，不连接账户。
+
 ## 2.6.25 修复 2.6.24 启动报错
 
-[一键下载最新版 2.6.25 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.25-preview-Windows-x64.zip)
+[下载 2.6.25 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.25-preview-Windows-x64.zip)
 
 修复骇客豆窗口在银狼主窗口显示前设置 Owner 导致的启动失败。现在会等主窗口真正显示后再建立窗口层级，并补充启动前状态的回归测试。2.6.24 无法启动，请改用此版本。解压后运行 `SilverWolfPet.exe`；原有设置会保留。
 
@@ -96,7 +106,7 @@ Codex 任务现在会在无敌玩家形态中区分思考、执行、等待用�
 
 ## 下载即用（Windows 10/11 x64）
 
-[下载最新版 2.6.25 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.25-preview-Windows-x64.zip)
+[下载最新版 2.6.26 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.26-preview-Windows-x64.zip)
 
 无需编译或安装依赖。下载后完整解压，双击 SilverWolfPet.exe 即可运行。已有旧版时先从托盘退出；保留同目录 assets 文件夹。当前为变身功能试用版。
 
