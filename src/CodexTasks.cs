@@ -10,7 +10,7 @@ using System.Windows.Automation;
 namespace SilverWolfPet {
 // Values crossing into the WPF dispatcher are copies, never mutable monitor state.
 public sealed class CodexTaskView {
-    public string Key,ThreadId,TurnId,Title,State,WaitingKind;
+    public string Key,ThreadId,TurnId,Title,State,WaitingKind,WaitingRequestId;
     public DateTime StartedUtc,EndedUtc;
     public bool Running;
     public CodexTaskView Copy() {return (CodexTaskView)MemberwiseClone();}
@@ -58,7 +58,21 @@ public sealed class CodexTaskTracker {
         task.View.State=state;task.View.Running=false;task.View.EndedUtc=now;ClearRequest(task);
         if(notify&&task.View.Key!=mainKey&&tasks.Values.Any(x=>x.View.Running))notice=task.View.Title+(state=="completed"?"：已完成。":"：运行已停止。");
     }
-    static void ClearRequest(Entry task){task.RequestCall=null;task.RequestKind=null;task.View.WaitingKind=null;task.AsyncQuestion=false;}
+    static void ClearRequest(Entry task){task.RequestCall=null;task.RequestKind=null;task.View.WaitingKind=null;task.View.WaitingRequestId=null;task.AsyncQuestion=false;}
+    static bool AcceptedAsyncRequest(object output) {
+        var data=Obj(output);
+        if(data==null&&output is string) {
+            try {data=Obj(new JavaScriptSerializer().DeserializeObject((string)output));}catch(ArgumentException){}
+        }
+        return data!=null&&Get(data,"accepted") is bool&&(bool)Get(data,"accepted");
+    }
+    static bool UserReply(Dictionary<string,object> payload) {
+        if(Str(Get(payload,"type"))!="message"||Str(Get(payload,"role"))!="user")return false;
+        var metadata=Obj(Get(payload,"internal_chat_message_metadata_passthrough"));
+        var kinds=Get(metadata,"content_item_kinds") as object[];
+        // Context injection also uses role=user; it must not dismiss a real question.
+        return kinds!=null&&kinds.Any(x=>Str(x).StartsWith("user.",StringComparison.Ordinal));
+    }
     public void Observe(string file,string id,string line,DateTime now) {
         Entry task;if(!tasks.TryGetValue(file+"/"+id,out task)||!task.View.Running)return;
         int payloadAt=line.IndexOf("\"payload\"",StringComparison.Ordinal);
@@ -77,11 +91,13 @@ public sealed class CodexTaskTracker {
                 }
                 if(type=="item_completed") {
                     var item=Obj(Get(payload,"item"));
-                    if(task.RequestCall!=null&&Str(Get(item,"id"))==task.RequestCall&&task.RequestKind=="approval") {ClearRequest(task);task.View.State="executing";}
+                    if(task.RequestKind=="input"&&now>=task.RequestAt&&Str(Get(item,"type"))=="UserMessage") {ClearRequest(task);task.View.State="thinking";}
+                    else if(task.RequestCall!=null&&Str(Get(item,"id"))==task.RequestCall&&task.RequestKind=="approval") {ClearRequest(task);task.View.State="executing";}
                 }
                 return;
             }
             if(Str(Get(root,"type"))!="response_item")return;
+            if(task.RequestKind=="input"&&now>=task.RequestAt&&UserReply(payload)) {ClearRequest(task);task.View.State="thinking";return;}
             if(type=="custom_tool_call"||type=="function_call") {
                 string name=Str(Get(payload,"name")),call=Str(Get(payload,"call_id"));
                 // Inspect actual function arguments only; output/source code quoting an
@@ -94,7 +110,9 @@ public sealed class CodexTaskTracker {
                 else if(task.RequestKind=="approval")ClearRequest(task);
                 if(task.View.State!="waiting-input"||task.RequestKind==null)task.View.State="executing";
             } else if(type=="custom_tool_call_output"||type=="function_call_output") {
-                if(task.RequestCall!=null&&Str(Get(payload,"call_id"))==task.RequestCall&&!task.AsyncQuestion){ClearRequest(task);task.View.State="executing";}
+                // Async tools first acknowledge delivery; only a later result or
+                // genuine user reply resolves the question, not parallel tool work.
+                if(task.RequestCall!=null&&Str(Get(payload,"call_id"))==task.RequestCall&&(!task.AsyncQuestion||!AcceptedAsyncRequest(Get(payload,"output")))){ClearRequest(task);task.View.State="executing";}
             } else if(type=="reasoning"&&task.RequestKind==null)task.View.State="thinking";
         }catch(ArgumentException){}catch(InvalidOperationException){}
     }
@@ -108,8 +126,8 @@ public sealed class CodexTaskTracker {
         bool approval=approvalCandidates.Length==1&&ApprovalVisible!=null&&ApprovalVisible();
         foreach(var task in active) {
             bool waiting=task.RequestKind=="input"&&(now-task.RequestAt).TotalSeconds>=2||approval&&approvalCandidates[0]==task;
-            if(waiting){task.View.State="waiting-input";task.View.WaitingKind=task.RequestKind;}
-            else if(task.View.State=="waiting-input"){task.View.State="executing";task.View.WaitingKind=null;}
+            if(waiting){task.View.State="waiting-input";task.View.WaitingKind=task.RequestKind;task.View.WaitingRequestId=task.RequestCall;}
+            else if(task.View.State=="waiting-input"){task.View.State="executing";task.View.WaitingKind=null;task.View.WaitingRequestId=null;}
         }
         Entry main=null;if(mainKey!=null)tasks.TryGetValue(mainKey,out main);
         if(main==null||!main.View.Running&&(main.View.State=="idle"||(now-main.View.EndedUtc).TotalSeconds>=8)) {
@@ -150,10 +168,31 @@ public sealed class CodexTaskTracker {
         if(tracker.Snapshot(start.AddMinutes(8).AddSeconds(3)).Display.WaitingKind!="input")throw new Exception("user question was not tracked");
         tracker.Observe("c.jsonl","c",result,start.AddMinutes(8).AddSeconds(4));
         if(tracker.Snapshot(start.AddMinutes(8).AddSeconds(4)).Display.State!="executing")throw new Exception("answered question kept the waiting action");
+        string asyncQuestion=exec.Replace("exec_command","request_user_input_async");
+        string ack=result.Replace("\"ok\"","\"{\\\"accepted\\\":true}\"");
+        string answer="{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"internal_chat_message_metadata_passthrough\":{\"content_item_kinds\":[\"user.text\"]}}}";
+        DateTime questionAt=start.AddMinutes(8).AddSeconds(10);
+        tracker.Observe("c.jsonl","c",asyncQuestion,questionAt);
+        tracker.Observe("c.jsonl","c",ack,questionAt.AddSeconds(1));
+        tracker.Observe("c.jsonl","c",exec.Replace("c1","parallel-tool"),questionAt.AddSeconds(2));
+        tracker.Observe("c.jsonl","c",answer.Replace("user.text","environments.environment_context"),questionAt.AddSeconds(3));
+        tracker.Observe("c.jsonl","c",answer,questionAt.AddSeconds(-1));
+        if(tracker.Snapshot(questionAt.AddSeconds(4)).Display.WaitingRequestId!="c1")throw new Exception("async acknowledgment, tool work, context or old reply dismissed the question");
+        tracker.Observe("c.jsonl","c",answer,questionAt.AddSeconds(5));
+        if(tracker.Snapshot(questionAt.AddSeconds(5)).Display.State!="thinking"||tracker.Snapshot(questionAt.AddSeconds(5)).Display.WaitingKind!=null)throw new Exception("modern user answer did not release async waiting");
+        tracker.Observe("c.jsonl","c",asyncQuestion.Replace("c1","c2"),questionAt.AddSeconds(6));
+        tracker.Observe("c.jsonl","c",result,questionAt.AddSeconds(7));
+        if(tracker.Snapshot(questionAt.AddSeconds(9)).Display.WaitingRequestId!="c2")throw new Exception("old request result dismissed a later question");
+        tracker.Observe("c.jsonl","c",result.Replace("c1","c2"),questionAt.AddSeconds(10));
+        if(tracker.Snapshot(questionAt.AddSeconds(10)).Display.State!="executing")throw new Exception("async terminal result did not release waiting");
+        tracker.Observe("c.jsonl","c",asyncQuestion,questionAt.AddSeconds(11));
+        tracker.Observe("c.jsonl","c","{\"type\":\"event_msg\",\"payload\":{\"type\":\"item_completed\",\"turn_id\":\"c\",\"item\":{\"type\":\"UserMessage\"}}}",questionAt.AddSeconds(14));
+        if(tracker.Snapshot(questionAt.AddSeconds(14)).Display.State!="thinking")throw new Exception("completed user message did not release waiting");
+        tracker.Observe("c.jsonl","c",asyncQuestion,questionAt.AddSeconds(15));
         tracker.Finish("c.jsonl","wrong-turn","completed",start.AddMinutes(9),true);
         if(tracker.Snapshot(start.AddMinutes(9)).Active.Length!=1)throw new Exception("mismatched completion ended another turn");
         tracker.Finish("c.jsonl","c","failed",start.AddMinutes(9),true);
-        if(tracker.Snapshot(start.AddMinutes(9)).Display.State!="failed"||tracker.Snapshot(start.AddMinutes(10)).Display!=null)throw new Exception("failed task did not retire to idle");
+        if(tracker.Snapshot(start.AddMinutes(9)).Display.State!="failed"||tracker.Snapshot(start.AddMinutes(9)).Display.WaitingRequestId!=null||tracker.Snapshot(start.AddMinutes(10)).Display!=null)throw new Exception("failed task did not retire to idle or clear question");
     }
 }
 

@@ -11,7 +11,7 @@ using System.Windows.Media.Imaging;
 namespace SilverWolfPet {
 public partial class PetWindow {
     CodexTaskSnapshot codexTasks;
-    string displayedTaskKey,displayedTaskState;
+    string displayedTaskKey,displayedTaskState,displayedRequestId,displayedWaitingKind;
     static string ShortTaskTitle(string title) {return title.Length>14?title.Substring(0,14)+"…":title;}
     void ApplyCodexTasks(CodexTaskSnapshot snapshot) {
         bool hadMultiple=codexTasks!=null&&codexTasks.Multiple;
@@ -21,14 +21,17 @@ public partial class PetWindow {
         var display=snapshot.Display;
         if(display!=null) {
             bool changed=displayedTaskKey!=display.Key;
+            bool newRequest=display.State=="waiting-input"&&(changed||displayedTaskState!="waiting-input"||displayedRequestId!=display.WaitingRequestId||displayedWaitingKind!=display.WaitingKind);
             if(changed) {
+                ClearCodexWaitingBubble();
                 codexStateSpoken.Clear();codexPendingWorkState=null;codexIntroQueuedState=null;
                 codexTimerBubble=false;codexWaitingBubble=false;codexTimerShownSecond=-1;
                 bubble.Visibility=Visibility.Collapsed;bubblePriority=0;replies.Children.Clear();BubbleSpace(0);
                 nextCodexThinkingLine=elapsed.Elapsed.TotalSeconds+14+random.NextDouble()*8;
             }
             codexTaskStart=elapsed.Elapsed.TotalSeconds-Math.Max(0,(DateTime.UtcNow-display.StartedUtc).TotalSeconds);
-            if(changed||displayedTaskState!=display.State) {
+            if(newRequest){ClearCodexWaitingBubble();codexStateSpoken.Remove("waiting-input");}
+            if(changed||newRequest||displayedTaskState!=display.State) {
                 if(display.State=="idle")EnterCodexIdle(elapsed.Elapsed.TotalSeconds);
                 else {
                     // A resolved request and a selected task change release the old
@@ -38,8 +41,10 @@ public partial class PetWindow {
                 }
             }
             displayedTaskKey=display.Key;displayedTaskState=display.State;
+            displayedRequestId=display.WaitingRequestId;displayedWaitingKind=display.WaitingKind;
         } else {
             displayedTaskKey=displayedTaskState=null;
+            displayedRequestId=displayedWaitingKind=null;ClearCodexWaitingBubble();
             if(codexFormWorking&&!codexExitActive)EnterCodexIdleIfNeeded();
         }
         if(hadMultiple!=snapshot.Multiple) {codexTimerBubble=false;codexTimerShownSecond=-1;}
@@ -201,9 +206,8 @@ public partial class PetWindow {
         if(codexWorkClips==null||String.IsNullOrEmpty(next)||!codexWorkClips.ContainsKey(next))return;
         if(codexFormWorking&&(!codexIntroComplete||now<codexIntroRelease)) {codexIntroQueuedState=next;return;}
         if(codexWorkState==next) {if(codexPendingWorkState!=null&&codexPendingWorkState!=next)codexPendingWorkState=null;return;}
-        // Keep permission/question requests visible long enough to notice even when
-        // the user answers immediately and the next execution record arrives.
-        if(codexWorkState=="waiting-input"&&(next=="thinking"||next=="executing")) {codexPendingWorkState=next;codexPendingWorkAt=Math.Max(codexWorkStateStart+12,now);return;}
+        // A pending request stays visible until resolved; never hold a resolved
+        // request for a minimum animation duration.
         // Reasoning records often land immediately after a tool record. Keep the
         // operation pose briefly so the character does not flicker between states.
         if(next=="thinking"&&codexWorkState=="executing") {codexPendingWorkState=next;codexPendingWorkAt=Math.Max(codexWorkStateStart+3.5,now+1.2);return;}
@@ -211,7 +215,7 @@ public partial class PetWindow {
     }
     void ApplyCodexWorkState(string next,double now) {
         if(codexTimerBubble&&next!="executing") {bubble.Visibility=Visibility.Collapsed;BubbleSpace(0);}
-        if(codexWaitingBubble&&next!="waiting-input") {codexWaitingBubble=false;bubble.Visibility=Visibility.Collapsed;replies.Children.Clear();bubble.IsHitTestVisible=false;BubbleSpace(0);}
+        if(next!="waiting-input") {ClearCodexWaitingBubble();codexStateSpoken.Remove("waiting-input");}
         codexWorkState=next;codexWorkStateStart=now;codexTimerBubble=false;codexTimerShownSecond=-1;
         if(next=="completed"||next=="failed") {codexResultUntil=now+8;nextCodexIdleLine=Double.PositiveInfinity;}
         else if(next!="idle") {codexResultUntil=0;nextCodexIdleLine=Double.PositiveInfinity;}
@@ -233,14 +237,18 @@ public partial class PetWindow {
             AddCodexApprovalReplies();
         }
     }
+    void ClearCodexWaitingBubble() {
+        if(!codexWaitingBubble)return;
+        codexWaitingBubble=false;bubble.Visibility=Visibility.Collapsed;replies.Children.Clear();bubble.IsHitTestVisible=false;bubblePriority=0;bubbleUntil=0;BubbleSpace(0);
+    }
     void AddCodexApprovalReplies() {
         bool input=codexTasks!=null&&codexTasks.Display!=null&&codexTasks.Display.WaitingKind=="input";
         Reply(input?"前往回答":"前往授权",delegate {
-            if(TryActivateCodexWindow()) {codexWaitingBubble=false;bubblePriority=0;return;}
+            if(TryActivateCodexWindow()) {ClearCodexWaitingBubble();return;}
             SayCodex("没找到 Codex 窗口，请先打开 Codex。",Double.PositiveInfinity,6);
             codexWaitingBubble=true;AddCodexApprovalReplies();
         });
-        Reply("知道了，稍等",delegate {codexWaitingBubble=false;bubblePriority=0;});
+        Reply("知道了，稍等",delegate {ClearCodexWaitingBubble();});
     }
     BitmapSource CodexWorkFrame(double now) {
         AnimationClip clip;
@@ -263,6 +271,7 @@ public partial class PetWindow {
         codexTimerBubble=false;codexTimerShownSecond=-1;nextCodexThinkingLine=now+30+random.NextDouble()*20;SayCodex(line,4.5,4);
     }
     void EnterCodexIdle(double now) {
+        ClearCodexWaitingBubble();codexStateSpoken.Remove("waiting-input");
         codexWorkState="idle";codexWorkStateStart=now;codexPendingWorkState=null;codexStateBubblePending=false;codexTimerBubble=false;codexTimerShownSecond=-1;codexResultUntil=0;
         if(bubble.Visibility==Visibility.Visible&&now>=bubbleUntil){bubble.Visibility=Visibility.Collapsed;BubbleSpace(0);}
         nextCodexIdleLine=now+18+random.NextDouble()*10;
@@ -372,8 +381,7 @@ public partial class PetWindow {
         if(approvalLabel!="前往授权"||laterLabel!="知道了，稍等"||CodexWindowScore("ChatGPT","Codex")<=CodexWindowScore("codex","" )||CodexWindowScore("chrome","ChatGPT")!=0||CodexWindowScore("ChatGPT","","WinUIDesktopWin32WindowClass",1200,800,false)==0||CodexWindowScore("ChatGPT","","WinUIDesktopWin32WindowClass",300,200,false)!=0||CodexWindowScore("codex","任务","ConsoleWindowClass",1200,800,false)!=0)throw new Exception("Codex approval window matching or reply labels failed");
         RenderDialogCheck(root,"waiting-input-dialog.png");
         SetCodexWorkStateAt("executing",waitingAt+1);
-        if(codexWorkState!="waiting-input"||codexPendingWorkState!="executing"||!codexWorkClips["waiting-input"].Frames.Contains(CodexFormFrame(waitingAt+11.9,pack.Base)))throw new Exception("Waiting input pose did not hold long enough");
-        if(!codexWorkClips["executing"].Frames.Contains(CodexFormFrame(waitingAt+12.1,pack.Base))||codexWaitingBubble||replies.Children.Count!=0)throw new Exception("Waiting input pose did not release into execution");
+        if(codexWorkState!="executing"||codexPendingWorkState!=null||codexWaitingBubble||replies.Children.Count!=0||bubble.IsHitTestVisible)throw new Exception("Resolved question did not immediately release pose and interaction");
         double completedAt=waitingAt+13;ApplyCodexWorkState("completed",completedAt);SetCodexForm(false);double ended=codexLastTaskEnd;
         if(!codexWorkClips["completed"].Frames.Contains(CodexFormFrame(completedAt+7.9,pack.Base)))throw new Exception("Completed pose ended too early");
         if(CodexFormFrame(completedAt+8.1,pack.Base)!=codexFrames[2]||codexWorkState!="idle")throw new Exception("Completed pose did not return to work idle");
@@ -443,6 +451,34 @@ public partial class PetWindow {
         CompleteCodexExit();SetCodexForm(false);Say("日常气泡样式检查",3);
         if(bubbleThemeWork!=false||bubblePanel.Effect!=null||bubbleTail.Visibility!=Visibility.Collapsed||!(bubblePanel.BorderBrush is SolidColorBrush))throw new Exception("Daily bubble theme was not restored");
         TestMultipleTaskBubble(root);
+        TestQuestionLifecycle();
+    }
+    void TestQuestionLifecycle() {
+        var task=new CodexTaskView {Key="question-test",Title="问答测试",State="waiting-input",WaitingKind="input",WaitingRequestId="q1",Running=true,StartedUtc=DateTime.UtcNow};
+        ApplyCodexTasks(new CodexTaskSnapshot {Active=new[]{task.Copy()},Display=task.Copy()});
+        codexIntroComplete=true;codexIntroQueuedState=null;codexIntroRelease=0;codexFormStart=elapsed.Elapsed.TotalSeconds-10;
+        ApplyCodexWorkState("waiting-input",elapsed.Elapsed.TotalSeconds);
+        if(!codexWaitingBubble||((TextBlock)((Button)replies.Children[0]).Content).Text!="前往回答")throw new Exception("Question interaction not shown");
+        ((Button)replies.Children[1]).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        ApplyCodexTasks(new CodexTaskSnapshot {Active=new[]{task.Copy()},Display=task.Copy()});
+        if(codexWaitingBubble||replies.Children.Count!=0||bubble.IsHitTestVisible||bubble.Visibility!=Visibility.Collapsed)throw new Exception("Acknowledged question interaction reappeared or kept hit area");
+        task.State="thinking";task.WaitingKind=task.WaitingRequestId=null;
+        ApplyCodexTasks(new CodexTaskSnapshot {Active=new[]{task.Copy()},Display=task.Copy()});
+        if(codexWorkState!="thinking"||codexPendingWorkState!=null)throw new Exception("Answered question pose stayed after acknowledgement");
+        task.State="waiting-input";task.WaitingKind="input";task.WaitingRequestId="q2";
+        ApplyCodexTasks(new CodexTaskSnapshot {Active=new[]{task.Copy()},Display=task.Copy()});
+        if(!codexWaitingBubble||replies.Children.Count!=2)throw new Exception("Second question in same turn was suppressed");
+        task.WaitingRequestId="q3";
+        ApplyCodexTasks(new CodexTaskSnapshot {Active=new[]{task.Copy()},Display=task.Copy()});
+        if(!codexWaitingBubble||replies.Children.Count!=2)throw new Exception("Replaced question duplicated or lost buttons");
+        task.State="executing";task.WaitingKind=task.WaitingRequestId=null;
+        ApplyCodexTasks(new CodexTaskSnapshot {Active=new[]{task.Copy()},Display=task.Copy()});
+        if(codexWorkState!="executing"||codexWaitingBubble||replies.Children.Count!=0)throw new Exception("Unclicked answered question did not clear");
+        task.State="waiting-input";task.WaitingKind="input";task.WaitingRequestId="q4";
+        ApplyCodexTasks(new CodexTaskSnapshot {Active=new[]{task.Copy()},Display=task.Copy()});
+        ApplyCodexTasks(new CodexTaskSnapshot());
+        if(codexWorkState!="idle"||codexWaitingBubble||replies.Children.Count!=0||bubble.Visibility!=Visibility.Collapsed||bubble.IsHitTestVisible)throw new Exception("Task termination retained infinite question bubble");
+        CompleteCodexExit();codexTasks=null;
     }
     void TestMultipleTaskBubble(string root) {
         double savedSize=prefs.Size;ResizePet(160);

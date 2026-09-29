@@ -1,3 +1,13 @@
+﻿## 2.6.27 修复问答互动与等待动作残留
+
+[一键下载最新版 2.6.27 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.27-preview-Windows-x64.zip)
+
+识别新版 Codex 的用户回答记录，回答后立即解除等待动作；任务结束、取消或回到待机时清除常驻问答气泡、按钮和点击区域。同一任务连续提问可分别显示互动，不再被第一次提醒的去重状态挡住。
+
+点击“前往回答”只唤起 Codex 并收起提示；点击“知道了，稍等”收起提示。未回答的问题仍保持等待状态，实际回答后恢复工作动作。异步问题的送达回执、后台工具执行和环境上下文不会误判为回答。沿用增量日志监测，不新增轮询线程。
+
+解压后运行 `SilverWolfPet.exe`，更新前先从托盘退出旧版；原有设置保留。
+
 ## 2.6.26 霓虹额度面板与骇客豆颜色稳定性
 
 [一键下载最新版 2.6.26 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.26-preview-Windows-x64.zip)
@@ -106,7 +116,7 @@ Codex 任务现在会在无敌玩家形态中区分思考、执行、等待用�
 
 ## 下载即用（Windows 10/11 x64）
 
-[下载最新版 2.6.26 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.26-preview-Windows-x64.zip)
+[下载最新版 2.6.27 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.27-preview-Windows-x64.zip)
 
 无需编译或安装依赖。下载后完整解压，双击 SilverWolfPet.exe 即可运行。已有旧版时先从托盘退出；保留同目录 assets 文件夹。当前为变身功能试用版。
 
