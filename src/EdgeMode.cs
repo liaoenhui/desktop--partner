@@ -105,6 +105,12 @@ public partial class PetWindow {
         var menu=new ContextMenu();MenuItem(menu,"拖回桌面／退出贴边",ExitEdgeMode);MenuItem(menu,"查看 Codex 额度",ShowSidebar);
         MenuItem(menu,"开心一下",delegate{edgeHappyAfter=0;PlayEdgeAnimation("happy",elapsed.Elapsed.TotalSeconds);});
         MenuItem(menu,"打个瞌睡",delegate{PlayEdgeAnimation("sleepy",elapsed.Elapsed.TotalSeconds);});
+        var expressions=new MenuItem {Header="表情预览"};menu.Items.Add(expressions);
+        string[] names={"暗中观察","得意","疑惑","偷笑"},actions={"observe","smug","puzzled","snicker"};
+        for(int i=0;i<names.Length;i++) {
+            string action=actions[i];var item=new MenuItem {Header=names[i]};
+            item.Click+=delegate{PlayEdgeAnimation(action,elapsed.Elapsed.TotalSeconds);};expressions.Items.Add(item);
+        }
         MenuItem(menu,"隐藏到托盘",HideManually);MenuItem(menu,"退出",Close);
         menuOpen=true;menu.Closed+=delegate{menuOpen=false;};menu.IsOpen=true;
     }

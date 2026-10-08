@@ -1,4 +1,14 @@
-﻿## 2.6.29 贴边 Q 版动态表情
+## 2.6.30 贴边表情包与清晰额度
+
+[一键下载 2.6.30 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.30-preview-Windows-x64.zip)
+
+贴边模式新增暗中观察、得意、疑惑、偷笑四组短动画，和开心表情随机穿插，约每 25–50 秒出现一次，不连续重复；眨眼仍按独立节奏播放，无操作超过 90 秒时会穿插瞌睡。右键“表情预览”可单独观看。动作结束回到原待机，拖动会中断，沿用闲置动画开关。
+
+骇客豆头上的额度数字从 11 调至 13 并加粗，缩小标签内边距，保留紧凑占用和展开面板入口。原 Q 版护目镜和 84 × 144 逻辑像素尺寸不变。新增四张透明图，解码宽度仍限制为 256 并复用缓存，不增加后台进程或计时器。
+
+更新前退出旧版，再解压运行 `SilverWolfPet.exe`。
+
+## 2.6.29 贴边 Q 版动态表情
 
 [一键下载 2.6.29 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.29-preview-Windows-x64.zip)
 
@@ -137,7 +147,7 @@ Codex 任务现在会在无敌玩家形态中区分思考、执行、等待用�
 
 ## 下载即用（Windows 10/11 x64）
 
-[下载最新版 2.6.29 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.29-preview-Windows-x64.zip)
+[下载最新版 2.6.30 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.30-preview-Windows-x64.zip)
 
 无需编译或安装依赖。下载后完整解压，双击 SilverWolfPet.exe 即可运行。已有旧版时先从托盘退出；保留同目录 assets 文件夹。当前为变身功能试用版。
 

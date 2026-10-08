@@ -292,12 +292,12 @@ public sealed class QuotaSidebar : IDisposable {
         face.Width=compact?36:30;face.Height=compact?28:30;
         foreach(UIElement child in face.Children)child.Visibility=child==mochi?(compact?Visibility.Visible:Visibility.Collapsed):(compact?Visibility.Collapsed:Visibility.Visible);
         if(compact) {
-            handle.Height=48;shell.Visibility=Visibility.Collapsed;percent.FontFamily=new FontFamily("Bahnschrift SemiBold");percent.FontSize=11;percent.Foreground=Accent();percentBadge.Padding=new Thickness(4,0,4,1);
+            handle.Height=48;shell.Visibility=Visibility.Collapsed;percent.FontFamily=new FontFamily("Bahnschrift SemiBold");percent.FontSize=13;percent.FontWeight=FontWeights.Bold;percent.Foreground=Accent();percentBadge.Padding=new Thickness(2,0,2,1);
             body.Margin=new Thickness(0);face.Margin=new Thickness(0,1,0,0);body.Children.Clear();body.Children.Add(percentBadge);body.Children.Add(face);return;
         }
         handle.Height=edge?108:64;
         shell.Visibility=edge?Visibility.Visible:Visibility.Collapsed;
-        percent.FontFamily=new FontFamily("Bahnschrift SemiBold");percent.FontSize=edge?10:13;percent.Foreground=Accent();
+        percent.FontFamily=new FontFamily("Bahnschrift SemiBold");percent.FontSize=edge?10:13;percent.FontWeight=FontWeights.SemiBold;percent.Foreground=Accent();
         percentBadge.Padding=edge?new Thickness(4,0,4,1):new Thickness(6,0,6,1);
         bean.Effect=edge?null:new System.Windows.Media.Effects.DropShadowEffect {Color=Color.FromRgb(102,92,255),BlurRadius=8,ShadowDepth=0,Opacity=.75};
         shell.Data=edge?Geometry.Parse("M40,0 C40,15 3,15 3,35 L3,73 C3,93 40,93 40,108 Z"):new RectangleGeometry(new Rect(1,1,38,62),18,18);
@@ -322,7 +322,7 @@ public sealed class QuotaSidebar : IDisposable {
         lastDraw=DateTime.UtcNow;rows.Children.Clear();var primary=enabled()?Primary():null;
         bool stale=failure.Length>0||(updated!=DateTime.MinValue&&(DateTime.UtcNow-updated).TotalMinutes>3);
         percent.Inlines.Clear();percent.Inlines.Add(new System.Windows.Documents.Run(primary==null?"—":primary.Remaining.ToString("0.#")));
-        if(primary!=null)percent.Inlines.Add(new System.Windows.Documents.Run("%") {FontSize=7,Foreground=new SolidColorBrush(Color.FromRgb(117,226,255)),BaselineAlignment=BaselineAlignment.Center});
+        if(primary!=null)percent.Inlines.Add(new System.Windows.Documents.Run("%") {FontSize=8,Foreground=new SolidColorBrush(Color.FromRgb(117,226,255)),BaselineAlignment=BaselineAlignment.Center});
         if(primary!=null)lastKnownRemaining=primary.Remaining;
         // Failed, late or empty refreshes must not masquerade as a quota change.
         // Keep the last known color, while unknown/expired percentages remain "—".
@@ -375,6 +375,12 @@ public sealed class QuotaSidebar : IDisposable {
             var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(image));using(var f=File.Create(System.IO.Path.Combine(root,"qa",name)))png.Save(f);
             view.Update(new List<QuotaReading>{new QuotaReading {Bucket="codex",Minutes=10080,Remaining=37,ResetUtc=DateTime.UtcNow.AddDays(1)}});
             if(view.PercentText()!="37%")throw new Exception("edge weekly fallback failed");
+            foreach(double value in new[]{0.0,7,99.9,100}) {
+                view.Update(new List<QuotaReading>{new QuotaReading {Bucket="codex",Minutes=10080,Remaining=value,ResetUtc=DateTime.UtcNow.AddDays(1)}});
+                handleContent.UpdateLayout();
+                view.percentBadge.Measure(new Size(Double.PositiveInfinity,Double.PositiveInfinity));
+                if(view.percent.FontSize<13||view.percentBadge.DesiredSize.Width>view.handle.Width||view.percentBadge.DesiredSize.Height+view.face.Height+view.face.Margin.Top>view.handle.Height)throw new Exception("enlarged edge percentage clipped");
+            }
             compact=false;view.Place();if(view.drawnCompact||view.mochi.Visibility!=Visibility.Collapsed||view.handle.Height!=108)throw new Exception("edge exit did not restore original sidebar style");
         }
     }

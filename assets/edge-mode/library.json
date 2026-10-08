@@ -1,15 +1,23 @@
 {
   "name": "银狼 Q 版贴边动作库",
-  "version": 1,
+  "version": 2,
   "frames": {
     "idle": "peek-right.png",
     "blink": "animations/blink.png",
     "happy": "animations/happy.png",
-    "sleepy": "animations/sleepy.png"
+    "sleepy": "animations/sleepy.png",
+    "observe": "animations/observe.png",
+    "smug": "animations/smug.png",
+    "puzzled": "animations/puzzled.png",
+    "snicker": "animations/snicker.png"
   },
   "clips": {
     "blink": { "frames": ["blink", "idle"], "milliseconds": [130, 100] },
     "happy": { "frames": ["happy", "idle", "happy", "idle"], "milliseconds": [450, 110, 650, 180] },
-    "sleepy": { "frames": ["blink", "sleepy", "blink", "sleepy", "blink", "idle"], "milliseconds": [350, 1200, 300, 1400, 350, 250] }
+    "sleepy": { "frames": ["blink", "sleepy", "blink", "sleepy", "blink", "idle"], "milliseconds": [350, 1200, 300, 1400, 350, 250] },
+    "observe": { "frames": ["blink", "observe", "blink", "observe", "idle"], "milliseconds": [100, 1000, 130, 900, 200] },
+    "smug": { "frames": ["smug", "idle", "smug", "blink", "idle"], "milliseconds": [750, 150, 900, 120, 200] },
+    "puzzled": { "frames": ["blink", "puzzled", "idle", "puzzled", "idle"], "milliseconds": [120, 850, 200, 800, 200] },
+    "snicker": { "frames": ["snicker", "happy", "snicker", "happy", "blink", "idle"], "milliseconds": [550, 150, 650, 150, 100, 200] }
   }
 }

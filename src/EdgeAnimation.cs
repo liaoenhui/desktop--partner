@@ -13,7 +13,8 @@ public sealed class EdgeLibrarySpec {public Dictionary<string,string> frames;pub
 public partial class PetWindow {
     readonly Dictionary<string,BitmapSource> edgeImages=new Dictionary<string,BitmapSource>();
     readonly Dictionary<string,AnimationClip> edgeClips=new Dictionary<string,AnimationClip>();
-    string edgeAction;
+    string edgeAction,lastEdgeMood;
+    static readonly string[] edgeRandomMoods={"observe","smug","puzzled","snicker","happy"};
     double edgeActionStart,nextEdgeBlink,nextEdgeMood,edgeHappyAfter;
     void LoadEdgeAnimations(string root) {
         string folder=Path.Combine(root,"assets","edge-mode");
@@ -34,17 +35,18 @@ public partial class PetWindow {
             if(clip==null||clip.frames==null||clip.milliseconds==null||clip.frames.Length==0||clip.frames.Length>16||clip.frames.Length!=clip.milliseconds.Length||clip.frames.Any(x=>!edgeImages.ContainsKey(x))||clip.milliseconds.Any(x=>x<50||x>4000))throw new InvalidDataException("Invalid edge animation timing");
             edgeClips[item.Key]=new AnimationClip {Frames=clip.frames.Select(x=>edgeImages[x]).ToArray(),Milliseconds=clip.milliseconds,Loop=false};
         }
-        if(new[]{"blink","happy","sleepy"}.Any(x=>!edgeClips.ContainsKey(x)))throw new InvalidDataException("Missing edge animation");
+        if(new[]{"blink","sleepy"}.Concat(edgeRandomMoods).Any(x=>!edgeClips.ContainsKey(x)))throw new InvalidDataException("Missing edge animation");
     }
     void ResetEdgeAnimation(double now) {
         edgeAction=null;SetFrame(edgeFrame);previous.Source=null;previous.Opacity=0;pet.Opacity=1;shift.Y=0;
-        nextEdgeBlink=now+3.5+random.NextDouble()*3.5;nextEdgeMood=now+45+random.NextDouble()*40;
+        nextEdgeBlink=now+3.5+random.NextDouble()*3.5;nextEdgeMood=now+25+random.NextDouble()*25;
         timer.Interval=TimeSpan.FromMilliseconds(200);
     }
     void PlayEdgeAnimation(string action,double now) {
         if(!edgeMode||!edgeClips.ContainsKey(action)||pressed)return;
         if(action=="happy"&&now<edgeHappyAfter)return;
         if(action=="happy")edgeHappyAfter=now+4;
+        if(action!="blink")lastEdgeMood=action;
         edgeAction=action;edgeActionStart=now;timer.Interval=TimeSpan.FromMilliseconds(50);
         SetFrame(edgeClips[action].Frames[0]);previous.Opacity=0;pet.Opacity=1;
     }
@@ -53,7 +55,13 @@ public partial class PetWindow {
         if(pressed||menuOpen){if(edgeAction!=null)ResetEdgeAnimation(now);return;}
         if(edgeAction==null) {
             if(!prefs.Idle)return;
-            if(idleSeconds>=90&&now>=nextEdgeMood){PlayEdgeAnimation("sleepy",now);return;}
+            if(now>=nextEdgeMood) {
+                // Real computer inactivity only biases dozing; Codex task states
+                // deliberately do not select expressions in this compact mode.
+                var choices=edgeRandomMoods.Where(x=>x!=lastEdgeMood&&(x!="happy"||now>=edgeHappyAfter)).ToArray();
+                string mood=idleSeconds>=90&&lastEdgeMood!="sleepy"&&random.Next(2)==0?"sleepy":choices[random.Next(choices.Length)];
+                PlayEdgeAnimation(mood,now);return;
+            }
             if(now>=nextEdgeBlink){PlayEdgeAnimation("blink",now);return;}
             return;
         }
@@ -77,12 +85,21 @@ public partial class PetWindow {
         edgeHappyAfter=0;PlayEdgeAnimation("happy",now+2);AdvanceEdgeAnimation(now+2.2,0);
         if(cachedBitmap!=edgeImages["happy"])throw new Exception("edge happy expression missing");
         AdvanceEdgeAnimation(now+4,0);nextEdgeMood=now+5;nextEdgeBlink=now+50;
-        AdvanceEdgeAnimation(now+5,120);if(edgeAction!="sleepy")throw new Exception("idle edge doze missing");
+        PlayEdgeAnimation("sleepy",now+5);AdvanceEdgeAnimation(now+5,120);if(edgeAction!="sleepy")throw new Exception("idle edge doze missing");
         if(EdgeBeanAnchor()!=anchor||Width!=EdgeWidth||Height!=EdgeHeight)throw new Exception("edge animation moved its quota anchor or resized");
         pressed=true;AdvanceEdgeAnimation(now+6,120);pressed=false;
         if(edgeAction!=null||cachedBitmap!=edgeFrame||shift.Y!=0)throw new Exception("drag did not cancel edge animation");
-        prefs.Idle=false;nextEdgeBlink=0;AdvanceEdgeAnimation(now+20,120);if(edgeAction!=null)throw new Exception("edge animation ignored idle preference");
-        foreach(var name in new[]{"blink","happy","sleepy"})RenderEdgeAnimationPreview(root,name);
+        string previousMood=lastEdgeMood;
+        for(int i=0;i<30;i++) {
+            double t=now+20+i*10;nextEdgeMood=t;nextEdgeBlink=t+100;AdvanceEdgeAnimation(t,0);
+            if(!edgeRandomMoods.Contains(edgeAction)||edgeAction==previousMood)throw new Exception("edge random mood missing or repeated consecutively");
+            previousMood=edgeAction;AdvanceEdgeAnimation(t+6,0);
+            if(edgeAction!=null||cachedBitmap!=edgeFrame||EdgeBeanAnchor()!=anchor)throw new Exception("random mood did not return to stable idle");
+        }
+        nextEdgeMood=now+400;nextEdgeBlink=now+350;AdvanceEdgeAnimation(now+350,0);AdvanceEdgeAnimation(now+351,0);
+        if(nextEdgeMood!=now+400)throw new Exception("blink postponed random expression");
+        prefs.Idle=false;nextEdgeBlink=0;nextEdgeMood=0;AdvanceEdgeAnimation(now+500,120);if(edgeAction!=null)throw new Exception("edge animation ignored idle preference");
+        foreach(var name in edgeClips.Keys)RenderEdgeAnimationPreview(root,name);
         ExitEdgeMode();codexTasks=tasks;prefs.Idle=oldIdle;
     }
     void RenderEdgeAnimationPreview(string root,string name) {
