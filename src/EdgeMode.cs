@@ -90,7 +90,7 @@ public partial class PetWindow {
         }
         Enter("idle");ScheduleIdle(elapsed.Elapsed.TotalSeconds);Clamp();Save();
     }
-    Rect EdgeBeanAnchor() {return edgeMode?new Rect(Left+(edgeLeft?EdgeWidth*.32:EdgeWidth*.68)-20,Top+8,40,48):Rect.Empty;}
+    Rect EdgeBeanAnchor() {return edgeMode?new Rect(Left+(edgeLeft?EdgeWidth*.32:EdgeWidth*.68)-22,Top+2,44,54):Rect.Empty;}
     void SaveEdgePosition() {
         prefs.EdgeSide=edgeLeft?"left":"right";prefs.EdgeScreen=edgeDevice;
         var screen=Forms.Screen.AllScreens.FirstOrDefault(x=>x.DeviceName==edgeDevice)??Forms.Screen.PrimaryScreen;

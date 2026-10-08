@@ -195,7 +195,7 @@ public sealed class QuotaSidebar : IDisposable {
     }
     void BindOwner() {handle.Owner=ownerWindow;popup.Owner=ownerWindow;ownerReady=true;}
     internal bool IsAttachedAndVisible(Window owner) {return ownerReady&&handle.Owner==owner&&popup.Owner==owner&&handle.IsVisible;}
-    internal bool EdgeAttachedAt(Rect anchor) {return drawnCompact&&handle.Height==48&&mochi.Visibility==Visibility.Visible&&!anchor.IsEmpty&&Math.Abs(handle.Left-anchor.Left)<1&&Math.Abs(handle.Top-anchor.Top)<1;}
+    internal bool EdgeAttachedAt(Rect anchor) {return drawnCompact&&handle.Height==54&&mochi.Visibility==Visibility.Visible&&!anchor.IsEmpty&&Math.Abs(handle.Left-anchor.Left)<1&&Math.Abs(handle.Top-anchor.Top)<1;}
     internal void ResetAttachment() {popup.Hide();previousPlacement=Rect.Empty;hovering=false;enterAt=leaveAt=DateTime.UtcNow;}
     public void Update(List<QuotaReading> value) {if(disposed)return;readings=value;updated=DateTime.UtcNow;failure="";Draw();Place();}
     public void Fail(string message) {if(disposed)return;failure=message;Draw();Place();}
@@ -292,10 +292,10 @@ public sealed class QuotaSidebar : IDisposable {
         face.Width=compact?36:30;face.Height=compact?28:30;
         foreach(UIElement child in face.Children)child.Visibility=child==mochi?(compact?Visibility.Visible:Visibility.Collapsed):(compact?Visibility.Collapsed:Visibility.Visible);
         if(compact) {
-            handle.Height=48;shell.Visibility=Visibility.Collapsed;percent.FontFamily=new FontFamily("Bahnschrift SemiBold");percent.FontSize=13;percent.FontWeight=FontWeights.Bold;percent.Foreground=Accent();percentBadge.Padding=new Thickness(2,0,2,1);
+            handle.Width=44;handle.Height=54;shell.Visibility=Visibility.Collapsed;percent.FontFamily=new FontFamily("Bahnschrift SemiBold");percent.FontSize=13;percent.FontWeight=FontWeights.Bold;percent.Foreground=Accent();percentBadge.Padding=new Thickness(4,2,4,2);percentBadge.Height=24;percentBadge.MinWidth=36;percent.VerticalAlignment=VerticalAlignment.Center;percent.Margin=new Thickness(0,2,0,0);
             body.Margin=new Thickness(0);face.Margin=new Thickness(0,1,0,0);body.Children.Clear();body.Children.Add(percentBadge);body.Children.Add(face);return;
         }
-        handle.Height=edge?108:64;
+        handle.Width=40;handle.Height=edge?108:64;percentBadge.Height=Double.NaN;percentBadge.MinWidth=0;percent.VerticalAlignment=VerticalAlignment.Stretch;percent.Margin=new Thickness(0);
         shell.Visibility=edge?Visibility.Visible:Visibility.Collapsed;
         percent.FontFamily=new FontFamily("Bahnschrift SemiBold");percent.FontSize=edge?10:13;percent.FontWeight=FontWeights.SemiBold;percent.Foreground=Accent();
         percentBadge.Padding=edge?new Thickness(4,0,4,1):new Thickness(6,0,6,1);
@@ -357,7 +357,7 @@ public sealed class QuotaSidebar : IDisposable {
         using(var view=new QuotaSidebar(()=>true,()=>true,.45,null,(a,b)=>{},false,avoid,false,character,true,null,null,null,()=>compact?attach():Rect.Empty)) {
             view.Update(new List<QuotaReading>{new QuotaReading {Bucket="codex",Minutes=300,Remaining=68,ResetUtc=DateTime.UtcNow.AddMinutes(102)},new QuotaReading {Bucket="codex",Minutes=10080,Remaining=42,ResetUtc=DateTime.UtcNow.AddDays(3)}});
             view.Expand();
-            if(!view.handle.IsVisible||!view.popup.IsVisible||!view.drawnCompact||view.handle.Height!=48||view.mochi.Visibility!=Visibility.Visible||view.PercentText()!="68%")throw new Exception("compact quota entry/panel failed");
+            if(!view.handle.IsVisible||!view.popup.IsVisible||!view.drawnCompact||view.handle.Height!=54||view.mochi.Visibility!=Visibility.Visible||view.PercentText()!="68%")throw new Exception("compact quota entry/panel failed");
             var a=attach();if(Math.Abs(view.handle.Left-a.Left)>1||Math.Abs(view.handle.Top-a.Top)>1)throw new Exception("bean left its head attachment");
             var panelBox=new Rect(view.popup.Left,view.popup.Top,view.popup.Width,view.popup.Height);var petBox=character();
             if(panelBox.IntersectsWith(petBox))throw new Exception("edge quota panel overlaps pet");
