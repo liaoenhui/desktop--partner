@@ -1,0 +1,15 @@
+{
+  "name": "银狼 Q 版贴边动作库",
+  "version": 1,
+  "frames": {
+    "idle": "peek-right.png",
+    "blink": "animations/blink.png",
+    "happy": "animations/happy.png",
+    "sleepy": "animations/sleepy.png"
+  },
+  "clips": {
+    "blink": { "frames": ["blink", "idle"], "milliseconds": [130, 100] },
+    "happy": { "frames": ["happy", "idle", "happy", "idle"], "milliseconds": [450, 110, 650, 180] },
+    "sleepy": { "frames": ["blink", "sleepy", "blink", "sleepy", "blink", "idle"], "milliseconds": [350, 1200, 300, 1400, 350, 250] }
+  }
+}

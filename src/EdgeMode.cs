@@ -28,13 +28,16 @@ public partial class PetWindow {
     internal void PrepareEdgeStartupCheck() {prefs.EdgeSide="right";prefs.EdgeScreen="";prefs.EdgeY=.65;}
     internal bool ReadyForEdgeStartupCheck {get{return ReadyForStartupCheck&&edgeMode&&Width==EdgeWidth&&Height==EdgeHeight&&sidebar.EdgeAttachedAt(EdgeBeanAnchor());}}
     void LoadEdgeMode(string root) {
-        var image=new BitmapImage();image.BeginInit();image.UriSource=new Uri(Path.Combine(root,"assets","edge-mode","peek-right.png"));image.DecodePixelWidth=512;image.CacheOption=BitmapCacheOption.OnLoad;image.EndInit();image.Freeze();
+        edgeFrame=ReadEdgeImage(Path.Combine(root,"assets","edge-mode","peek-right.png"));LoadEdgeAnimations(root);
+    }
+    static BitmapSource ReadEdgeImage(string path) {
+        var image=new BitmapImage();image.BeginInit();image.UriSource=new Uri(path);image.DecodePixelWidth=256;image.CacheOption=BitmapCacheOption.OnLoad;image.EndInit();image.Freeze();
         var source=new FormatConvertedBitmap(image,PixelFormats.Bgra32,null,0);source.Freeze();
         var pixels=new byte[source.PixelWidth*source.PixelHeight*4];source.CopyPixels(pixels,source.PixelWidth*4,0);
         int l=source.PixelWidth,t=source.PixelHeight,r=0,b=0;
         for(int y=0;y<source.PixelHeight;y++)for(int x=0;x<source.PixelWidth;x++)if(pixels[(y*source.PixelWidth+x)*4+3]>20){l=Math.Min(l,x);t=Math.Min(t,y);r=Math.Max(r,x+1);b=Math.Max(b,y+1);}
         if(r<=l||b<=t)throw new InvalidDataException("Empty edge pose");
-        edgeFrame=new CroppedBitmap(source,new Int32Rect(l,t,r-l,b-t));edgeFrame.Freeze();
+        var result=new CroppedBitmap(source,new Int32Rect(l,t,r-l,b-t));result.Freeze();return result;
     }
     static int EdgeCrossing(Rect character,Rect work) {
         double threshold=Math.Min(32,character.Width*.25);
@@ -64,7 +67,7 @@ public partial class PetWindow {
         Width=EdgeWidth;Height=EdgeHeight;pet.Margin=new Thickness(0,42,0,3);previous.Margin=pet.Margin;
         pet.RenderTransformOrigin=new Point(.5,.5);scale.ScaleX=left?-1:1;scale.ScaleY=1;rotate.Angle=0;shift.Y=0;
         SetFrame(edgeFrame);previous.Source=null;previous.Opacity=0;pet.Opacity=1;
-        SetPetWindowTop(y);ClampEdge();Enter("idle");timer.Interval=TimeSpan.FromMilliseconds(200);Save();
+        SetPetWindowTop(y);ClampEdge();Enter("idle");ResetEdgeAnimation(elapsed.Elapsed.TotalSeconds);Save();
     }
     void ClampEdge() {
         var screen=Forms.Screen.AllScreens.FirstOrDefault(x=>x.DeviceName==edgeDevice)??Forms.Screen.PrimaryScreen;edgeDevice=screen.DeviceName;
@@ -74,7 +77,7 @@ public partial class PetWindow {
     void ExitEdgeMode() {
         if(!edgeMode)return;
         double center=Left+Width/2,bottom=Top+Height;
-        edgeMode=false;prefs.EdgeSide="";edgeDevice=null;
+        edgeMode=false;edgeAction=null;prefs.EdgeSide="";edgeDevice=null;
         if(sidebar!=null)sidebar.ResetAttachment();
         Width=prefs.Size*1.6+28;Height=prefs.Size+85;pet.Margin=new Thickness(14,70,14,15);previous.Margin=pet.Margin;pet.RenderTransformOrigin=new Point(.5,.85);
         scale.ScaleX=scale.ScaleY=1;rotate.Angle=0;shift.Y=0;SetFrame(pack.Base);previous.Source=null;previous.Opacity=0;
@@ -99,7 +102,10 @@ public partial class PetWindow {
         EnterEdgeMode(prefs.EdgeSide=="left",screen.DeviceName,screen.WorkingArea.Top/dpiY+Bound(Finite(prefs.EdgeY)?prefs.EdgeY:.6,0,1)*Math.Max(0,screen.WorkingArea.Height/dpiY-EdgeHeight));
     }
     void ShowEdgeMenu() {
-        var menu=new ContextMenu();MenuItem(menu,"拖回桌面／退出贴边",ExitEdgeMode);MenuItem(menu,"查看 Codex 额度",ShowSidebar);MenuItem(menu,"隐藏到托盘",HideManually);MenuItem(menu,"退出",Close);
+        var menu=new ContextMenu();MenuItem(menu,"拖回桌面／退出贴边",ExitEdgeMode);MenuItem(menu,"查看 Codex 额度",ShowSidebar);
+        MenuItem(menu,"开心一下",delegate{edgeHappyAfter=0;PlayEdgeAnimation("happy",elapsed.Elapsed.TotalSeconds);});
+        MenuItem(menu,"打个瞌睡",delegate{PlayEdgeAnimation("sleepy",elapsed.Elapsed.TotalSeconds);});
+        MenuItem(menu,"隐藏到托盘",HideManually);MenuItem(menu,"退出",Close);
         menuOpen=true;menu.Closed+=delegate{menuOpen=false;};menu.IsOpen=true;
     }
     void EdgeModeTests(string root) {

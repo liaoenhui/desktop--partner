@@ -320,7 +320,7 @@ public partial class PetWindow : Window {
         string warning=null;
         try { pack=LoadedPack.Load(String.IsNullOrEmpty(prefs.PackPath)?defaultPack:prefs.PackPath); }
         catch(Exception ex) { pack=LoadedPack.Load(defaultPack); prefs.PackPath=""; warning="自定义素材无法载入，已恢复默认形象。"; Debug.WriteLine(ex); }
-        Title="银狼 LV.999 桌宠 · 2.6.28 预览版"; WindowStyle=WindowStyle.None; ResizeMode=ResizeMode.NoResize;
+        Title="银狼 LV.999 桌宠 · 2.6.29 预览版"; WindowStyle=WindowStyle.None; ResizeMode=ResizeMode.NoResize;
         Icon=BitmapFrame.Create(new Uri(System.IO.Path.Combine(root,"assets","silver-wolf.ico")));
         AllowsTransparency=true; Background=Brushes.Transparent; ShowInTaskbar=false;ShowActivated=false; Topmost=prefs.Topmost;
         if(preview) { ShowInTaskbar=true; Title="银狼 LV.999 · 动作测试"; }
@@ -435,7 +435,7 @@ public partial class PetWindow : Window {
     }
     void Down(object sender,MouseButtonEventArgs e) {
         if(!Opaque(e.GetPosition(pet)))return;
-        pressed=true; dragging=false; pressHead=e.GetPosition(pet).Y<pet.ActualHeight*.46; pressCursor=CursorPoint(); startLeft=Left; startTop=Top; pet.CaptureMouse(); lastAction=elapsed.Elapsed.TotalSeconds;if(!edgeMode)BeginTouch(e.GetPosition(pet)); ScheduleIdle(lastAction); e.Handled=true;
+        pressed=true; dragging=false; pressHead=e.GetPosition(pet).Y<pet.ActualHeight*.46; pressCursor=CursorPoint(); startLeft=Left; startTop=Top; pet.CaptureMouse(); lastAction=elapsed.Elapsed.TotalSeconds;if(edgeMode)ResetEdgeAnimation(lastAction);else BeginTouch(e.GetPosition(pet)); ScheduleIdle(lastAction); e.Handled=true;
     }
     void Move(object sender,MouseEventArgs e) {
         if(!pressed)return; var p=CursorPoint(); var delta=p-pressCursor;
@@ -452,7 +452,7 @@ public partial class PetWindow : Window {
     }
     void Up(object sender,MouseButtonEventArgs e) {
         if(!pressed)return; bool moved=dragging; pressed=false; dragging=false; pet.ReleaseMouseCapture();
-        if(edgeMode){ClampEdge();Save();e.Handled=true;return;}
+        if(edgeMode){ClampEdge();if(!moved)PlayEdgeAnimation("happy",elapsed.Elapsed.TotalSeconds);Save();e.Handled=true;return;}
         if(moved&&TryEnterEdgeMode()){e.Handled=true;return;}
         if(moved) { Clamp(); if(!WorkFormReply()){Enter("land"); Say("落地成功。操作还行。",2);}Save(); }
         else EndTouch(elapsed.Elapsed.TotalSeconds);
@@ -529,7 +529,7 @@ public partial class PetWindow : Window {
         return IntPtr.Zero;
     }
     void Tick() {
-        if(edgeMode)return;
+        if(edgeMode){AdvanceEdgeAnimation(elapsed.Elapsed.TotalSeconds,IdleSeconds());return;}
         double now=elapsed.Elapsed.TotalSeconds;CheckTouchHold(now);Advance(now);
         if(!testing&&now>=nextReminderCheck) { nextReminderCheck=now+1;CheckReminders(DateTime.Now); }
     }
@@ -626,7 +626,7 @@ public partial class PetWindow : Window {
     void ShowSidebar() { prefs.SidebarEnabled=true;Save();if(sidebar!=null)sidebar.Expand(); }
     void CreateTray() {
         trayIcon=new System.Drawing.Icon(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"assets","silver-wolf.ico"),Forms.SystemInformation.SmallIconSize);
-        tray=new Forms.NotifyIcon { Icon=trayIcon, Text="银狼 LV.999 · v2.6.28 预览版 · 双击找回桌宠", Visible=true };
+        tray=new Forms.NotifyIcon { Icon=trayIcon, Text="银狼 LV.999 · v2.6.29 预览版 · 双击找回桌宠", Visible=true };
         var menu=new Forms.ContextMenuStrip();
         menu.Items.Add("显示 / 找回桌宠",null,delegate { Dispatcher.Invoke(new Action(Recover)); });
         menu.Items.Add("隐藏桌宠",null,delegate { Dispatcher.Invoke(new Action(HideManually)); });
@@ -667,7 +667,7 @@ public partial class PetWindow : Window {
         settings=new Window { Title="银狼 LV.999 · 设置", Width=410, Height=640, ResizeMode=ResizeMode.NoResize, WindowStartupLocation=WindowStartupLocation.CenterScreen, Background=new SolidColorBrush(Color.FromRgb(245,243,252)), Topmost=true };
         ThemeWindow(settings);
         var panel=new StackPanel { Margin=new Thickness(24) }; settings.Content=new ScrollViewer { Content=panel, VerticalScrollBarVisibility=ScrollBarVisibility.Auto };
-        panel.Children.Add(new TextBlock { Text="PLAYER SETTINGS  /  2.6.28 预览版", FontSize=20, FontWeight=FontWeights.Bold, Foreground=new SolidColorBrush(Color.FromRgb(76,54,136)) });
+        panel.Children.Add(new TextBlock { Text="PLAYER SETTINGS  /  2.6.29 预览版", FontSize=20, FontWeight=FontWeights.Bold, Foreground=new SolidColorBrush(Color.FromRgb(76,54,136)) });
         var packLabel=new TextBlock { Text="当前形象："+(pack.Spec.name??"自定义"), Margin=new Thickness(0,12,0,16) }; panel.Children.Add(packLabel);
         panel.Children.Add(new TextBlock { Text="桌宠大小（也可在角色上滚动鼠标滚轮）" });
         var slider=new Slider { Minimum=160, Maximum=600, Value=prefs.Size, Margin=new Thickness(0,8,0,16), TickFrequency=20, IsSnapToTickEnabled=true }; slider.ValueChanged+=delegate { ResizePet(slider.Value); }; panel.Children.Add(slider);
@@ -727,6 +727,7 @@ public partial class PetWindow : Window {
     public void SelfTest(string root) {
         var checks=new List<string>();
         EdgeModeTests(root);checks.Add("PASS compact left/right edge mode, boundary threshold, paused work UI and restored live task");
+        EdgeAnimationTests(root);checks.Add("PASS edge blink, happy, doze sequences, drag cancellation, fixed quota anchor and idle preference");
         QuotaSidebar.Tests(root);checks.Add("PASS sidebar quota colors, primary selection, stale/unknown/expired readings and rendering");
         ExperienceTests();checks.Add("PASS fullscreen-game-only quiet classification, windowed-game/browser exclusion, quiet preference and manual override, themed button template");
         TouchTests(root);checks.Add("PASS touch regions, hold threshold, single hold, drag priority, repeat touches and region/timeout reset");
@@ -864,7 +865,7 @@ public static class Program {
         try {
             bool created;
             using(var mutex=new System.Threading.Mutex(true,test||startup?"Local\\SilverWolfPet.Test":preview?"Local\\SilverWolfPet.Preview":"Local\\SilverWolfPet.Desktop",out created)) {
-                if(!created) { if(!autoStart)MessageBox.Show("已有桌宠在运行。若要升级，请先在旧版托盘菜单点击退出，再启动 v2.6.28 预览版。","银狼 LV.999"); return 0; }
+                if(!created) { if(!autoStart)MessageBox.Show("已有桌宠在运行。若要升级，请先在旧版托盘菜单点击退出，再启动 v2.6.29 预览版。","银狼 LV.999"); return 0; }
                 var app=new Application { ShutdownMode=ShutdownMode.OnMainWindowClose };
                 var window=new PetWindow(root,test||startup,preview); app.MainWindow=window;
                 if(test) { window.SelfTest(root); window.Close(); return 0; }

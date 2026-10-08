@@ -1,4 +1,15 @@
-﻿## 2.6.28 紧凑贴边模式
+﻿## 2.6.29 贴边 Q 版动态表情
+
+[一键下载 2.6.29 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.29-preview-Windows-x64.zip)
+
+贴边模式新增独立动画库，以已确认的 Q 版原图为基准，保留原护目镜与紧凑大小。待机约每 3.5–7 秒自然眨眼；点击角色会短暂开心回应，连续点击有 4 秒冷却；电脑无操作达到 90 秒后，偶尔出现约 4 秒的打瞌睡表情。右键也可选择“开心一下”“打个瞌睡”预览。拖动会中断表情，骇客豆、百分比及额度面板正常使用。
+
+沿用 84 × 144 逻辑像素尺寸，左右贴边共用素材并镜像播放。动画结束回到原图，沿用全局闲置动画开关；贴边期间继续屏蔽工作形态和任务气泡。只增加三张表情图片，解码到不超过 256 像素宽并缓存，不新增定时器或后台进程。
+
+更新前退出旧版，再解压运行 `SilverWolfPet.exe`。
+
+
+## 2.6.28 紧凑贴边模式
 
 拖动银狼越过屏幕左／右外侧边缘并松手，即收成 Q 版探头姿态。第一版支持左右边缘；双屏之间的连接边缘继续用于跨屏拖动。沿边缘拖动调整高度，向桌面内拖出约 36 个逻辑像素恢复，也可右键“拖回桌面／退出贴边”或使用托盘“找回桌宠”。
 
@@ -6,7 +17,7 @@
 
 贴边期间不区分形态，不显示键盘、日常气泡、变身或工作状态互动；后台继续跟踪任务与额度。拖回桌面恢复原尺寸，并显示当前仍在运行的任务状态，不回放贴边期间的提醒。记住贴边方向、屏幕和高度。新增一张透明素材，载入时解码宽度上限 512 像素；复用既有窗口和额度定时器，贴边角色不播放逐帧动画。
 
-[一键下载最新版 2.6.28 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.28-preview-Windows-x64.zip)
+[下载 2.6.28 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.28-preview-Windows-x64.zip)
 
 ## 2.6.27 修复问答互动与等待动作残留
 
@@ -126,7 +137,7 @@ Codex 任务现在会在无敌玩家形态中区分思考、执行、等待用�
 
 ## 下载即用（Windows 10/11 x64）
 
-[下载最新版 2.6.28 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.28-preview-Windows-x64.zip)
+[下载最新版 2.6.29 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.29-preview-Windows-x64.zip)
 
 无需编译或安装依赖。下载后完整解压，双击 SilverWolfPet.exe 即可运行。已有旧版时先从托盘退出；保留同目录 assets 文件夹。当前为变身功能试用版。
 
