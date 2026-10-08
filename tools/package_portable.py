@@ -13,6 +13,7 @@ manifest = default/'pet.json'
 spec = json.loads(manifest.read_text(encoding='utf-8-sig'))
 files += [build/'assets/silver-wolf.ico', manifest, default/spec['image']]
 files += [default/atlas['file'] for atlas in spec.get('atlases', {}).values()]
+files += [build/'assets/edge-mode/peek-right.png']
 mode = build/'assets/codex-mode'
 files += [mode/name for name in ('cross-original-action.png', 'exit-portal.png',
                                'invincible-clean-foot.png', 'ultimate-cutin-transparent.png')]

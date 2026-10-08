@@ -74,6 +74,9 @@ public sealed class QuotaSidebar : IDisposable {
     readonly Action<double,string> save;
     readonly Func<Rect[]> obstacles;
     readonly Func<Rect> companion;
+    readonly Func<Rect> edgeAttachment;
+    readonly FrameworkElement mochi=new EdgeMochi {Width=36,Height=28,Visibility=Visibility.Collapsed};
+    bool drawnCompact;
     readonly Action<bool> saveDock;
     readonly Action greet;
     readonly System.Windows.Shapes.Path shell=new System.Windows.Shapes.Path();
@@ -120,7 +123,8 @@ public sealed class QuotaSidebar : IDisposable {
     }
     [DllImport("user32.dll",EntryPoint="GetWindowLongW")]static extern int GetWindowLong(IntPtr h,int n);
     [DllImport("user32.dll",EntryPoint="SetWindowLongW")]static extern int SetWindowLong(IntPtr h,int n,int v);
-    public QuotaSidebar(Func<bool> show,Func<bool> queryEnabled,double position,string screen,Action<double,string> persist,bool start=true,Func<Rect[]> avoid=null,bool inspect=false,Func<Rect> follow=null,bool dock=false,Action<bool> persistDock=null,Action onClick=null,Window owner=null) {
+    public QuotaSidebar(Func<bool> show,Func<bool> queryEnabled,double position,string screen,Action<double,string> persist,bool start=true,Func<Rect[]> avoid=null,bool inspect=false,Func<Rect> follow=null,bool dock=false,Action<bool> persistDock=null,Action onClick=null,Window owner=null,Func<Rect> edgeFollow=null) {
+        edgeAttachment=edgeFollow;
         companion=follow;docked=dock||follow==null;saveDock=persistDock??(v=>{});greet=onClick??(()=>{});
         obstacles=avoid??(()=>new Rect[0]);
         visible=show;enabled=queryEnabled;save=persist;fraction=Double.IsNaN(position)||Double.IsInfinity(position)?.45:Math.Max(0,Math.Min(1,position));device=screen;
@@ -137,6 +141,7 @@ public sealed class QuotaSidebar : IDisposable {
         var bridge=new Rectangle {Width=6,Height=2,Fill=ink};Canvas.SetLeft(bridge,12);Canvas.SetTop(bridge,10);glasses.Children.Add(bridge);
         foreach(var p in new[]{new Point(5,11),new Point(9,13),new Point(20,13),new Point(24,11)}) {var pixel=new Rectangle {Width=3,Height=3,Fill=new SolidColorBrush(p.X<15?Color.FromRgb(117,235,255):Color.FromRgb(235,128,255))};Canvas.SetLeft(pixel,p.X);Canvas.SetTop(pixel,p.Y);glasses.Children.Add(pixel);}
         face.Children.Add(mouth);
+        face.Children.Add(mochi);
         mouth.Background=new LinearGradientBrush(Color.FromRgb(20,10,57),Color.FromRgb(63,24,117),90);
         percentBadge=new Border {Child=percent,CornerRadius=new CornerRadius(7),Padding=new Thickness(5,0,5,1),HorizontalAlignment=HorizontalAlignment.Center,Background=new LinearGradientBrush(Color.FromArgb(215,8,20,58),Color.FromArgb(205,48,27,101),0),BorderBrush=Accent(),BorderThickness=new Thickness(.7),Effect=new System.Windows.Media.Effects.DropShadowEffect {Color=Color.FromRgb(80,211,255),BlurRadius=7,ShadowDepth=0,Opacity=.55}};
         SetHandleStyle(docked);
@@ -162,6 +167,7 @@ public sealed class QuotaSidebar : IDisposable {
         popup.MouseLeave+=delegate {leaveAt=DateTime.UtcNow;};
         handle.MouseLeftButtonDown+=delegate {dragStart=new Point(Forms.Cursor.Position.X,Forms.Cursor.Position.Y);dragged=false;handle.CaptureMouse();};
         handle.MouseMove+=delegate {
+            if(CompactEdge)return;
             if(!dragStart.HasValue)return;var p=Forms.Cursor.Position;
             if((new Point(p.X,p.Y)-dragStart.Value).Length>5)dragged=true;
             if(!dragged)return;
@@ -169,7 +175,7 @@ public sealed class QuotaSidebar : IDisposable {
         };
         handle.MouseLeftButtonUp+=delegate {
             bool wasDragged=dragged;dragStart=null;
-            if(wasDragged){var p=Forms.Cursor.Position;var monitor=Forms.Screen.FromPoint(p);device=monitor.DeviceName;fraction=Math.Max(0,Math.Min(1,(p.Y-monitor.WorkingArea.Top)/(double)Math.Max(1,monitor.WorkingArea.Height)));docked=companion==null||p.X>=monitor.WorkingArea.Right-64;save(fraction,device);saveDock(docked);}
+            if(wasDragged&&!CompactEdge){var p=Forms.Cursor.Position;var monitor=Forms.Screen.FromPoint(p);device=monitor.DeviceName;fraction=Math.Max(0,Math.Min(1,(p.Y-monitor.WorkingArea.Top)/(double)Math.Max(1,monitor.WorkingArea.Height)));docked=companion==null||p.X>=monitor.WorkingArea.Right-64;save(fraction,device);saveDock(docked);}
             handle.ReleaseMouseCapture();Place();
             hovering=false;enterAt=DateTime.UtcNow;leaveAt=DateTime.UtcNow;
             if(!wasDragged){greet();Expand();}
@@ -189,6 +195,8 @@ public sealed class QuotaSidebar : IDisposable {
     }
     void BindOwner() {handle.Owner=ownerWindow;popup.Owner=ownerWindow;ownerReady=true;}
     internal bool IsAttachedAndVisible(Window owner) {return ownerReady&&handle.Owner==owner&&popup.Owner==owner&&handle.IsVisible;}
+    internal bool EdgeAttachedAt(Rect anchor) {return drawnCompact&&handle.Height==48&&mochi.Visibility==Visibility.Visible&&!anchor.IsEmpty&&Math.Abs(handle.Left-anchor.Left)<1&&Math.Abs(handle.Top-anchor.Top)<1;}
+    internal void ResetAttachment() {popup.Hide();previousPlacement=Rect.Empty;hovering=false;enterAt=leaveAt=DateTime.UtcNow;}
     public void Update(List<QuotaReading> value) {if(disposed)return;readings=value;updated=DateTime.UtcNow;failure="";Draw();Place();}
     public void Fail(string message) {if(disposed)return;failure=message;Draw();Place();}
     public void SetWorking(bool value) {working=value;if(!value)AnimateMouth();}
@@ -211,6 +219,7 @@ public sealed class QuotaSidebar : IDisposable {
         for(int i=0;i<pixels.Count;i++)pixels[i].Opacity=.48+.42*(.5+.5*Math.Sin(time*1.4+i*1.7));
     }
     void AnimateMouth() {
+        if(CompactEdge)return;
         double open=working?2+7*Math.Abs(Math.Sin(DateTime.UtcNow.TimeOfDay.TotalMilliseconds/170.0)):3;
         if(Math.Abs(mouth.Height-open)<.01)return;
         mouth.Height=open;mouth.Margin=new Thickness(0,19-(open-3)/2,0,0);
@@ -235,8 +244,9 @@ public sealed class QuotaSidebar : IDisposable {
         var source=PresentationSource.FromVisual(handle);var transform=source==null?Matrix.Identity:source.CompositionTarget.TransformToDevice;
         double dx=transform.M11,dy=transform.M22;
         var anchor=companion==null?Rect.Empty:companion();
+        var attachment=edgeAttachment==null?Rect.Empty:edgeAttachment();bool compact=!attachment.IsEmpty;
         bool moving=dragStart.HasValue&&dragged;var cursor=Forms.Cursor.Position;
-        var screen=moving?Forms.Screen.FromPoint(cursor):!docked&&!anchor.IsEmpty?Forms.Screen.FromPoint(new System.Drawing.Point((int)((anchor.Left+anchor.Width/2)*dx),(int)((anchor.Top+anchor.Height/2)*dy))):Forms.Screen.AllScreens.FirstOrDefault(x=>x.DeviceName==device)??Forms.Screen.PrimaryScreen;
+        var screen=moving?Forms.Screen.FromPoint(cursor):(compact||!docked)&&!anchor.IsEmpty?Forms.Screen.FromPoint(new System.Drawing.Point((int)((anchor.Left+anchor.Width/2)*dx),(int)((anchor.Top+anchor.Height/2)*dy))):Forms.Screen.AllScreens.FirstOrDefault(x=>x.DeviceName==device)??Forms.Screen.PrimaryScreen;
         var area=screen.WorkingArea;
         SetHandleStyle(docked&&!moving);
         var work=new Rect(area.Left/dx,area.Top/dy,area.Width/dx,area.Height/dy);
@@ -244,15 +254,17 @@ public sealed class QuotaSidebar : IDisposable {
         var preferred=new Point(work.Right-handle.Width,work.Top+work.Height*fraction-handle.Height/2);
         if(!docked&&!anchor.IsEmpty)preferred=new Point(anchor.Left+anchor.Width*.12-handle.Width,anchor.Bottom-handle.Height+4);
         if(moving)preferred=new Point(cursor.X/dx-handle.Width/2,cursor.Y/dy-handle.Height/2);
+        if(compact)preferred=attachment.TopLeft;
         // The follower occupies the sprite's transparent lower-left margin. Full window
         // avoidance is for the popup and docked entry, not this intentional attachment.
-        var handlePlace=FindHandleSpace(work,new Size(handle.Width,handle.Height),preferred,docked&&!moving,reserved);
+        var handlePlace=FindHandleSpace(work,new Size(handle.Width,handle.Height),preferred,!compact&&docked&&!moving,reserved);
         canShowHandle=!handlePlace.IsEmpty;
         if(!handlePlace.IsEmpty)MoveWindow(handle,handlePlace.Left,handlePlace.Top,dx,dy);
         var here=new Point(handle.Left,handle.Top);
         if(here!=lastHandle)previousPlacement=Rect.Empty;lastHandle=here;
         var blockers=reserved.Concat(new[]{new Rect(handle.Left,handle.Top,handle.Width,handle.Height)}).ToArray();
-        var chosen=FindSpace(work,new Size(popup.Width,popup.Height),new Point(handle.Left-popup.Width-13,handle.Top+handle.Height/2-popup.Height/2),blockers,popup.IsVisible?previousPlacement:Rect.Empty);
+        double preferredX=compact&&handle.Left<work.Left+work.Width/2?anchor.Right+13:compact?anchor.Left-popup.Width-13:handle.Left-popup.Width-13;
+        var chosen=FindSpace(work,new Size(popup.Width,popup.Height),new Point(preferredX,handle.Top+handle.Height/2-popup.Height/2),blockers,popup.IsVisible?previousPlacement:Rect.Empty);
         canPlace=!chosen.IsEmpty;
         if(canPlace){MoveWindow(popup,chosen.Left,chosen.Top,dx,dy);previousPlacement=new Rect(popup.Left,popup.Top,popup.Width,popup.Height);}
         else {popup.Hide();}
@@ -273,8 +285,16 @@ public sealed class QuotaSidebar : IDisposable {
         if(Double.IsNaN(window.Left)||Math.Abs(window.Left-x)>.01)window.Left=x;
         if(Double.IsNaN(window.Top)||Math.Abs(window.Top-y)>.01)window.Top=y;
     }
+    bool CompactEdge {get{return edgeAttachment!=null&&!edgeAttachment().IsEmpty;}}
     void SetHandleStyle(bool edge) {
-        if(drawnDocked==edge)return;drawnDocked=edge;
+        bool compact=CompactEdge;
+        if(drawnDocked==edge&&drawnCompact==compact)return;drawnDocked=edge;drawnCompact=compact;
+        face.Width=compact?36:30;face.Height=compact?28:30;
+        foreach(UIElement child in face.Children)child.Visibility=child==mochi?(compact?Visibility.Visible:Visibility.Collapsed):(compact?Visibility.Collapsed:Visibility.Visible);
+        if(compact) {
+            handle.Height=48;shell.Visibility=Visibility.Collapsed;percent.FontFamily=new FontFamily("Bahnschrift SemiBold");percent.FontSize=11;percent.Foreground=Accent();percentBadge.Padding=new Thickness(4,0,4,1);
+            body.Margin=new Thickness(0);face.Margin=new Thickness(0,1,0,0);body.Children.Clear();body.Children.Add(percentBadge);body.Children.Add(face);return;
+        }
         handle.Height=edge?108:64;
         shell.Visibility=edge?Visibility.Visible:Visibility.Collapsed;
         percent.FontFamily=new FontFamily("Bahnschrift SemiBold");percent.FontSize=edge?10:13;percent.Foreground=Accent();
@@ -332,6 +352,32 @@ public sealed class QuotaSidebar : IDisposable {
         content.InvalidateMeasure();content.Measure(new Size(popup.Width,Double.PositiveInfinity));popup.Height=Math.Max(154,Math.Ceiling(content.DesiredSize.Height));Outline();
     }
     public void Dispose() {if(disposed)return;disposed=true;if(ownerWindow!=null&&ownerRendered!=null)ownerWindow.ContentRendered-=ownerRendered;timer.Stop();handle.Close();popup.Close();}
+    internal static void TestEdgeAttachment(Func<Rect> attach,Func<Rect> character,Func<Rect[]> avoid,FrameworkElement petScene,string root,string name) {
+        bool compact=true;
+        using(var view=new QuotaSidebar(()=>true,()=>true,.45,null,(a,b)=>{},false,avoid,false,character,true,null,null,null,()=>compact?attach():Rect.Empty)) {
+            view.Update(new List<QuotaReading>{new QuotaReading {Bucket="codex",Minutes=300,Remaining=68,ResetUtc=DateTime.UtcNow.AddMinutes(102)},new QuotaReading {Bucket="codex",Minutes=10080,Remaining=42,ResetUtc=DateTime.UtcNow.AddDays(3)}});
+            view.Expand();
+            if(!view.handle.IsVisible||!view.popup.IsVisible||!view.drawnCompact||view.handle.Height!=48||view.mochi.Visibility!=Visibility.Visible||view.PercentText()!="68%")throw new Exception("compact quota entry/panel failed");
+            var a=attach();if(Math.Abs(view.handle.Left-a.Left)>1||Math.Abs(view.handle.Top-a.Top)>1)throw new Exception("bean left its head attachment");
+            var panelBox=new Rect(view.popup.Left,view.popup.Top,view.popup.Width,view.popup.Height);var petBox=character();
+            if(panelBox.IntersectsWith(petBox))throw new Exception("edge quota panel overlaps pet");
+            var handleContent=(FrameworkElement)view.handle.Content;handleContent.Measure(new Size(view.handle.Width,view.handle.Height));handleContent.Arrange(new Rect(0,0,view.handle.Width,view.handle.Height));handleContent.UpdateLayout();
+            var panelContent=(FrameworkElement)view.popup.Content;panelContent.Measure(new Size(view.popup.Width,view.popup.Height));panelContent.Arrange(new Rect(0,0,view.popup.Width,view.popup.Height));panelContent.UpdateLayout();
+            var bounds=Rect.Union(panelBox,petBox);bounds.Inflate(12,12);
+            Func<FrameworkElement,double,double,BitmapSource> capture=(visual,w,h)=>{var shot=new RenderTargetBitmap((int)Math.Ceiling(w)*2,(int)Math.Ceiling(h)*2,192,192,PixelFormats.Pbgra32);shot.Render(visual);return shot;};
+            var drawing=new DrawingVisual();using(var d=drawing.RenderOpen()) {
+                d.DrawRectangle(QuotaPanelChrome.Solid("#1A2339"),null,new Rect(0,0,bounds.Width,bounds.Height));
+                d.DrawImage(capture(petScene,petBox.Width,petBox.Height),new Rect(petBox.Left-bounds.Left,petBox.Top-bounds.Top,petBox.Width,petBox.Height));
+                d.DrawImage(capture(handleContent,view.handle.Width,view.handle.Height),new Rect(view.handle.Left-bounds.Left,view.handle.Top-bounds.Top,view.handle.Width,view.handle.Height));
+                d.DrawImage(capture(panelContent,panelBox.Width,panelBox.Height),new Rect(panelBox.Left-bounds.Left,panelBox.Top-bounds.Top,panelBox.Width,panelBox.Height));
+            }
+            var image=new RenderTargetBitmap((int)Math.Ceiling(bounds.Width)*2,(int)Math.Ceiling(bounds.Height)*2,192,192,PixelFormats.Pbgra32);image.Render(drawing);
+            var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(image));using(var f=File.Create(System.IO.Path.Combine(root,"qa",name)))png.Save(f);
+            view.Update(new List<QuotaReading>{new QuotaReading {Bucket="codex",Minutes=10080,Remaining=37,ResetUtc=DateTime.UtcNow.AddDays(1)}});
+            if(view.PercentText()!="37%")throw new Exception("edge weekly fallback failed");
+            compact=false;view.Place();if(view.drawnCompact||view.mochi.Visibility!=Visibility.Collapsed||view.handle.Height!=108)throw new Exception("edge exit did not restore original sidebar style");
+        }
+    }
     public static void Tests(string root) {
         var petBounds=new Rect(700,200,180,260);
         var petWindow=new Window {Width=80,Height=80,ShowActivated=false,ShowInTaskbar=false,Content=new Border {Background=Brushes.Transparent}};

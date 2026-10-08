@@ -1,6 +1,16 @@
-﻿## 2.6.27 修复问答互动与等待动作残留
+﻿## 2.6.28 紧凑贴边模式
 
-[一键下载最新版 2.6.27 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.27-preview-Windows-x64.zip)
+拖动银狼越过屏幕左／右外侧边缘并松手，即收成 Q 版探头姿态。第一版支持左右边缘；双屏之间的连接边缘继续用于跨屏拖动。沿边缘拖动调整高度，向桌面内拖出约 36 个逻辑像素恢复，也可右键“拖回桌面／退出贴边”或使用托盘“找回桌宠”。
+
+贴边占用固定 84 × 144 个 Windows 逻辑像素（100% 缩放时即像素），与原桌宠大小独立。使用认可的第一版 Q 版护目镜造型；小团子骇客豆坐在头顶，真实额度百分比始终保留，悬停／点击展开原额度面板。无 5 小时额度时仍显示周额度。
+
+贴边期间不区分形态，不显示键盘、日常气泡、变身或工作状态互动；后台继续跟踪任务与额度。拖回桌面恢复原尺寸，并显示当前仍在运行的任务状态，不回放贴边期间的提醒。记住贴边方向、屏幕和高度。新增一张透明素材，载入时解码宽度上限 512 像素；复用既有窗口和额度定时器，贴边角色不播放逐帧动画。
+
+[一键下载最新版 2.6.28 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.28-preview-Windows-x64.zip)
+
+## 2.6.27 修复问答互动与等待动作残留
+
+[下载 2.6.27 Windows x64 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.27-preview-Windows-x64.zip)
 
 识别新版 Codex 的用户回答记录，回答后立即解除等待动作；任务结束、取消或回到待机时清除常驻问答气泡、按钮和点击区域。同一任务连续提问可分别显示互动，不再被第一次提醒的去重状态挡住。
 
@@ -116,7 +126,7 @@ Codex 任务现在会在无敌玩家形态中区分思考、执行、等待用�
 
 ## 下载即用（Windows 10/11 x64）
 
-[下载最新版 2.6.27 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.27-preview-Windows-x64.zip)
+[下载最新版 2.6.28 便携包](https://github.com/liaoenhui/desktop--partner/raw/refs/heads/main/downloads/SilverWolfPet-v2.6.28-preview-Windows-x64.zip)
 
 无需编译或安装依赖。下载后完整解压，双击 SilverWolfPet.exe 即可运行。已有旧版时先从托盘退出；保留同目录 assets 文件夹。当前为变身功能试用版。
 

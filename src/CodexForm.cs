@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
@@ -14,6 +14,7 @@ public partial class PetWindow {
     string displayedTaskKey,displayedTaskState,displayedRequestId,displayedWaitingKind;
     static string ShortTaskTitle(string title) {return title.Length>14?title.Substring(0,14)+"…":title;}
     void ApplyCodexTasks(CodexTaskSnapshot snapshot) {
+        if(edgeMode){codexTasks=snapshot;if(sidebar!=null)sidebar.SetWorking(false);return;}
         bool hadMultiple=codexTasks!=null&&codexTasks.Multiple;
         codexTasks=snapshot;
         if(sidebar!=null)sidebar.SetWorking(snapshot.Active.Any());

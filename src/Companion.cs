@@ -141,6 +141,7 @@ public partial class PetWindow {
         LayoutBubble();
     }
     void Prompt(string message,string category,int priority) {
+        if(edgeMode)return;
         if(codexFormWorking||Muted(category))return;
         if(bubble.Visibility==Visibility.Visible&&elapsed.Elapsed.TotalSeconds<bubbleUntil&&priority<bubblePriority)return;
         Say(message,25,priority);
@@ -170,7 +171,9 @@ public partial class PetWindow {
         Reply("等我忙完",delegate { Enter("headpat");Say("行，你先过眼前这关。我等着。",4); });
     }
     void CompanionTick() {
-        double now=elapsed.Elapsed.TotalSeconds;QuietTick(now);double idle=IdleSeconds();
+        double now=elapsed.Elapsed.TotalSeconds;QuietTick(now);
+        if(edgeMode){if(activityPulse!=null)activityPulse.Take();return;}
+        double idle=IdleSeconds();
         if(Double.IsNaN(idle))return;
         useClock.Sample(now,idle);
         if(useClock.ActiveSeconds<lastBreakActive)lastBreakActive=0;
